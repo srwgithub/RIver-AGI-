@@ -1,0 +1,144 @@
+version: '3.8'
+
+services:
+  # 后端应用
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: river-agi-app
+    ports:
+      - "8080:8080"
+    environment:
+      - SPRING_PROFILES_ACTIVE=docker
+      - DEEPSEEK_API_KEY=${DEEPSEEK_API_KEY:-}
+      - JWT_SECRET=${JWT_SECRET:-river-agi-docker-secret-key}
+      - SPRING_DATASOURCE_URL=jdbc:mysql://mysql:3306/river_agi?useSSL=false&serverTimezone=Asia/Shanghai
+      - SPRING_DATASOURCE_USERNAME=river_agi
+      - SPRING_DATASOURCE_PASSWORD=river_agi_password
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - MINIO_ENDPOINT=http://minio:9000
+      - MINIO_ACCESS_KEY=river_agi
+      - MINIO_SECRET_KEY=river_agi_password
+      - RABBITMQ_HOST=rabbitmq
+      - RABBITMQ_PORT=5672
+      - RABBITMQ_USERNAME=river_agi
+      - RABBITMQ_PASSWORD=river_agi_password
+    depends_on:
+      mysql:
+        condition: service_healthy
+      redis:
+        condition: service_started
+      minio:
+        condition: service_started
+    volumes:
+      - app_data:/app/data
+      - upload_data:/app/uploads
+    networks:
+      - river-agi-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/actuator/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 60s
+
+  # MySQL数据库
+  mysql:
+    image: mysql:8.0
+    container_name: river-agi-mysql
+    ports:
+      - "3306:3306"
+    environment:
+      MYSQL_ROOT_PASSWORD: river_agi_root_password
+      MYSQL_DATABASE: river_agi
+      MYSQL_USER: river_agi
+      MYSQL_PASSWORD: river_agi_password
+    volumes:
+      - mysql_data:/var/lib/mysql
+    networks:
+      - river-agi-network
+    command: >
+      --default-authentication-plugin=mysql_native_password
+      --character-set-server=utf8mb4
+      --collation-server=utf8mb4_unicode_ci
+      --max-connections=500
+      --innodb-buffer-pool-size=256M
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "root", "-priver_agi_root_password"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+
+  # Redis缓存
+  redis:
+    image: redis:7
+    container_name: river-agi-redis
+    ports:
+      - "6379:6379"
+    command: redis-server --maxmemory 256mb --maxmemory-policy allkeys-lru
+    volumes:
+      - redis_data:/data
+    networks:
+      - river-agi-network
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+
+  # MinIO对象存储
+  minio:
+    image: minio/minio:latest
+    container_name: river-agi-minio
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    environment:
+      MINIO_ROOT_USER: river_agi
+      MINIO_ROOT_PASSWORD: river_agi_password
+    command: server /data --console-address ":9001"
+    volumes:
+      - minio_data:/data
+    networks:
+      - river-agi-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+
+  # RabbitMQ消息队列
+  rabbitmq:
+    image: rabbitmq:3-management
+    container_name: river-agi-rabbitmq
+    ports:
+      - "5672:5672"
+      - "15672:15672"
+    environment:
+      RABBITMQ_DEFAULT_USER: river_agi
+      RABBITMQ_DEFAULT_PASS: river_agi_password
+    volumes:
+      - rabbitmq_data:/var/lib/rabbitmq
+    networks:
+      - river-agi-network
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "check_port_connectivity"]
+      interval: 15s
+      timeout: 10s
+      retries: 5
+
+volumes:
+  mysql_data:
+  redis_data:
+  minio_data:
+  rabbitmq_data:
+  app_data:
+  upload_data:
+
+networks:
+  river-agi-network:
+    driver: bridge

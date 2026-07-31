@@ -1,0 +1,185 @@
+# RIver AGI 第十五轮错误信息与优化清单
+
+## 一、必须优先修复的错误
+
+### 1. 后端全新编译失败
+
+文件：`backend/src/main/java/com/river/agi/security/service/SecurityService.java:559`
+
+错误：`List<String> maskedRow` 调用了不存在的 `append()` 方法，导致 `mvn clean test` 在编译阶段失败。
+
+优化要求：
+
+- 改为向 List 添加元素的方法；
+- 清理 target 后执行 `mvn clean test`；
+- 确认源码可以在全新环境完成编译、测试和打包。
+
+### 2. ChartServiceTest 与生产代码不一致
+
+文件：`backend/src/test/java/com/river/agi/chart/service/ChartServiceTest.java:72`
+
+错误：测试使用旧版 ChartService 构造器和 `generateReport(Long, String)`，当前服务已经增加依赖并要求 `Authentication` 参数。
+
+优化要求：
+
+- 同步测试构造器参数；
+- 为测试创建合法的 Authentication 或使用独立的测试身份上下文；
+- 更新所有 `generateReport` 调用；
+- 完整执行 `mvn clean test`，不能只使用旧 target 编译产物。
+
+### 3. 测试结果曾被旧编译产物掩盖
+
+现象：普通 `mvn test` 显示 53 个测试，但其中 13 个错误；执行 `mvn clean test` 后直接暴露源码编译错误。
+
+优化要求：
+
+- CI 每次测试必须先清理构建目录；
+- 禁止把旧 target 下的测试结果当作当前源码结果；
+- 建立测试失败即阻断合并和交付的质量门禁。
+
+### 4. 安全扫描和脱敏功能仍存在编译/验收风险
+
+现象：当前脱敏代码无法编译；此前真实 Excel 安全扫描曾返回 HTTP 500。
+
+优化要求：
+
+- 先修复 SecurityService 编译错误；
+- 验证手机号、身份证号、邮箱、姓名、地址和银行卡扫描；
+- 验证脱敏预览和脱敏文件真实生成；
+- `match_type` 数据库字段保持足够长度，并在 H2/MySQL 迁移脚本中统一；
+- 扫描失败必须返回明确错误码并保存 FAILED 任务状态。
+
+### 5. 数据质量分析结果与原始数据不一致
+
+现象：测试文件含重复行、空值、非法日期、离群值和负数，但此前结果出现 `duplicateRows=0`、`nullCells=0`，统计结果不能完全复算。
+
+优化要求：
+
+- 统一 null、空字符串和非法格式的判断规则；
+- 使用整行哈希或主键组合识别重复行；
+- 返回异常字段、行号、原始值和异常类型；
+- 保证 totalRows、totalCells、nullCells、emptyCells、duplicateRows 可复算；
+- 增加真实 Excel/CSV 质量分析集成测试。
+
+### 6. AI 工具调用尚无完整验收证据
+
+现状：代码中已出现 `@Tool` 和 `ToolCallbackProvider`，但尚未用 Mock Provider 或真实 API Key 证明消息能够真实调用质量分析、安全扫描、图表和预测工具。
+
+优化要求：
+
+- 使用 Mock AI Provider 验证工具是否实际执行；
+- 记录工具名称、参数、返回值、成功/失败和 traceId；
+- 工具内部必须再次校验用户、租户和数据集权限；
+- 无 AI Key 时非 AI 功能正常启动；
+- 有 Key 但调用失败时返回明确错误，不生成虚假结果。
+
+### 7. 前端调用了不存在或不匹配的接口
+
+文件：`backend/src/main/frontend/src/App.vue:17`、`:31`
+
+错误：调用 `/api/v1/datasets/analyze` 和 `/api/v1/chat/ask`，当前后端没有对应接口。
+
+优化要求：
+
+- 统一使用当前 RESTful API；
+- 上传流程改为 `/api/v1/datasets/upload`，再轮询解析、分析和安全任务；
+- 对话流程使用 `/api/v1/chat/sessions` 和 `/api/v1/chat/sessions/{id}/messages`；
+- 重新构建前端并确认 Spring Boot static 目录只保留最新构建产物。
+
+### 8. 图表页面字段写死
+
+文件：`frontend/src/views/Charts.vue:109`
+
+错误：图表生成写死 `xAxisField=日期`、`yAxisField=销售额`，而测试文件实际字段为 `date`、`demand`。
+
+优化要求：
+
+- 使用后端图表推荐返回的字段；
+- 允许用户选择 X 轴和 Y 轴；
+- 字段不存在时前端显示明确提示；
+- 增加 date/demand、中文字段和无日期字段三种测试。
+
+### 9. 预测页面使用未确认的 LIGHTGBM
+
+文件：`frontend/src/views/Prediction.vue:97`
+
+错误：前端固定提交 `modelType: LIGHTGBM`，后端当前主要实现 AUTO、线性回归、移动平均、指数平滑和 Holt-Winters，前后端算法列表不一致。
+
+优化要求：
+
+- 前端从 `/api/v1/predictions/algorithms` 动态加载算法；
+- 只提交后端实际支持的算法；
+- 增加 forecastDays、验证集指标、模型版本和失败原因展示；
+- 非法日期、缺失值和样本不足时返回 4xx，而不是 HTTP 500。
+
+### 10. 认证接口可能返回密码哈希
+
+文件：`backend/src/main/java/com/river/agi/auth/controller/AuthController.java:30-33`
+
+错误：注册接口直接返回 User 实体，而 User 实体包含 password 字段。
+
+优化要求：
+
+- 注册和用户查询统一返回 UserResponse DTO；
+- DTO 中禁止包含 password、密码哈希和内部安全字段；
+- 增加接口响应敏感字段断言测试。
+
+### 11. 资源权限校验仍未覆盖所有接口
+
+重点文件：`ChartController.java`、`PredictionController.java`、`AnnotationController.java`
+
+风险：部分图表推荐、图表生成、预测查询/删除、标注查询和标签接口没有在 Controller 层体现用户或租户资源校验，不能仅凭登录鉴权证明不越权。
+
+优化要求：
+
+- 所有资源按 userId/tenantId/角色执行归属校验；
+- 用户 A 访问用户 B 的数据集、预测、报告、标注和会话时必须返回 403/404；
+- 不得泄露资源名称、字段、结果和敏感数据；
+- 增加双用户越权集成测试。
+
+### 12. 生产配置仍有弱默认值
+
+文件：`backend/src/main/resources/application.yml:63,104,106`、`backend/docker-compose.yml:15-27`
+
+问题：AI Key、加密主密钥、JWT、数据库、MinIO 和 RabbitMQ 存在默认值或明文密码；加密默认关闭。
+
+优化要求：
+
+- 生产环境密钥全部改为必填环境变量或密钥管理服务；
+- 删除弱默认 JWT 和默认数据库密码；
+- 生产强制开启敏感数据加密；
+- 启用 TLS、密钥轮换和导出审批；
+- Docker Compose 使用 `.env.example` 占位符，不能放真实默认密码。
+
+## 二、合同标准仍缺少的验收证据
+
+以下不是代码入口问题，而是合同第三条和第九、十条要求的交付证据，目前没有看到完整报告：
+
+- 测试覆盖率总体不低于 80%；
+- 关键业务逻辑覆盖率 100%；
+- 单元、集成、系统、性能和安全测试报告；
+- 200 人并发测试；
+- 常规响应不高于 1.5 秒；
+- 复杂任务提交不高于 5 秒；
+- 百万级实时分析和千万级标注查询；
+- TLS、漏洞扫描、SAST/DAST 和等保二级相关证明；
+- 备份、异地备份、恢复演练和故障自动恢复报告；
+- 生产 Docker 部署、监控、告警、日志和应急预案；
+- 需求、架构、数据库、接口、测试、部署、运维、用户和培训文档；
+- 代码注释率 20%，关键业务注释率 30%。
+
+## 三、本轮完成判定
+
+当前判定：未完成，不能最终验收。
+
+下一轮必须先完成：
+
+1. 修复 SecurityService 编译错误；
+2. 同步 ChartServiceTest 与生产代码；
+3. 执行 `mvn clean test` 并保证全部通过；
+4. 修复前端接口和字段不匹配；
+5. 完成安全扫描、脱敏、质量分析和预测真实数据集成测试；
+6. 完成权限、密码哈希泄露和审计测试；
+7. 补齐性能、安全、覆盖率、部署和合同交付文档。
+
+只有上述项目全部完成并提供可复核证据，才可以进入最终合同验收。

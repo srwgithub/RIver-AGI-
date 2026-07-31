@@ -1,0 +1,176 @@
+server:
+  port: 8080
+  tomcat:
+    threads:
+      max: ${SERVER_MAX_THREADS:200}
+      min-spare: ${SERVER_MIN_SPARE_THREADS:20}
+    accept-count: ${SERVER_ACCEPT_COUNT:500}
+    max-connections: ${SERVER_MAX_CONNECTIONS:10000}
+  compression:
+    enabled: true
+    mime-types: application/json,text/html,text/plain,text/css,application/javascript
+    min-response-size: 1024
+
+spring:
+  application:
+    name: river-agi-backend
+
+  autoconfigure:
+    exclude:
+      - org.springframework.ai.model.openai.autoconfigure.OpenAiAudioSpeechAutoConfiguration
+  
+  servlet:
+    multipart:
+      max-file-size: 100MB
+      max-request-size: 100MB
+  
+  # Database Configuration
+  datasource:
+    url: ${DB_URL:jdbc:h2:mem:river_agi;DB_CLOSE_DELAY=-1}
+    username: ${DB_USERNAME:sa}
+    password: ${DB_PASSWORD:}
+    driver-class-name: ${DB_DRIVER:org.h2.Driver}
+  
+  # H2 Console (Dev only)
+  h2:
+    console:
+      enabled: ${H2_CONSOLE_ENABLED:true}
+      path: /h2-console
+  
+  # Flyway Database Migration
+  flyway:
+    # MySQL 默认使用 database/init_mysql.sql；空库自动迁移时显式设置 FLYWAY_ENABLED=true。
+    enabled: ${FLYWAY_ENABLED:false}
+    locations: classpath:db/migration
+    baseline-on-migrate: true
+    baseline-version: 0
+    # H2 uses different dialect - will auto-detect from datasource
+
+  # SQL Init - Only for development with H2 (using Flyway for MySQL)
+  sql:
+    init:
+      # H2 开发环境在 application-h2.yml 中显式开启；MySQL 使用 database/init_mysql.sql。
+      mode: ${SQL_INIT_MODE:never}
+      schema-locations: classpath:schema-h2.sql
+  
+  # Redis
+  data:
+    redis:
+      host: ${REDIS_HOST:localhost}
+      port: ${REDIS_PORT:6379}
+      password: ${REDIS_PASSWORD:}
+  
+  # RabbitMQ
+  rabbitmq:
+    host: ${RABBITMQ_HOST:localhost}
+    port: ${RABBITMQ_PORT:5672}
+    username: ${RABBITMQ_USERNAME:guest}
+    password: ${RABBITMQ_PASSWORD:guest}
+    listener:
+      simple:
+        auto-startup: ${RABBITMQ_LISTENER_AUTO_STARTUP:false}
+      direct:
+        auto-startup: ${RABBITMQ_LISTENER_AUTO_STARTUP:false}
+  
+  # Spring AI - DeepSeek
+  ai:
+    openai:
+      base-url: ${DEEPSEEK_BASE_URL:https://api.deepseek.com}
+      api-key: ${DEEPSEEK_API_KEY:}
+      chat:
+        options:
+          model: ${DEEPSEEK_MODEL:deepseek-v4-flash}
+
+# Local Storage Configuration
+app:
+  storage:
+    local-path: ${APP_STORAGE_PATH:./uploads}
+    base-url: ${APP_BASE_URL:http://localhost:8080}
+
+# MinIO Configuration (reserved for future use)
+minio:
+  endpoint: ${MINIO_ENDPOINT:http://localhost:9000}
+  access-key: ${MINIO_ACCESS_KEY:minioadmin}
+  secret-key: ${MINIO_SECRET_KEY:minioadmin}
+  bucket-name: ${MINIO_BUCKET:river-agi}
+
+# MyBatis Plus
+mybatis-plus:
+  configuration:
+    map-underscore-to-camel-case: true
+    log-impl: org.apache.ibatis.logging.stdout.StdOutImpl
+  global-config:
+    db-config:
+      id-type: auto
+
+# Swagger/OpenAPI
+springdoc:
+  api-docs:
+    path: /api-docs
+  swagger-ui:
+    path: /swagger-ui.html
+
+# JWT Configuration
+jwt:
+  secret: ${JWT_SECRET}
+  expiration: ${JWT_EXPIRATION:86400000}
+  
+# Encryption Configuration
+encryption:
+  master-key: ${ENCRYPTION_MASTER_KEY:river-agi-encryption-key-2026}
+  algorithm: AES/GCM/NoPadding
+  enabled: ${ENCRYPTION_ENABLED:false}
+
+# Security Configuration
+security:
+  password-encoder: bcrypt
+  rate-limit:
+    enabled: ${RATE_LIMIT_ENABLED:false}
+    max-requests-per-minute: 100
+  session-timeout: ${SESSION_TIMEOUT:3600}
+
+# Management
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics
+  health:
+    redis:
+      enabled: ${REDIS_HEALTH_ENABLED:false}
+    db:
+      enabled: ${DB_HEALTH_ENABLED:false}
+
+# Logging
+logging:
+  level:
+    com.river.agi: ${LOG_LEVEL:DEBUG}
+    org.springframework.security: INFO
+    org.mybatis.spring: DEBUG
+  pattern:
+    console: "%d{yyyy-MM-dd HH:mm:ss} [%thread] %-5level %logger{36} - %msg%n"
+    file: "%d{yyyy-MM-dd HH:mm:ss} [%thread] %-5level %logger{36} - %msg%n"
+
+# Async Configuration
+async:
+  task:
+    core-pool-size: ${ASYNC_CORE_POOL_SIZE:10}
+    max-pool-size: ${ASYNC_MAX_POOL_SIZE:50}
+    queue-capacity: ${ASYNC_QUEUE_CAPACITY:500}
+    thread-name-prefix: river-agi-async-
+
+spring.datasource.hikari:
+  maximum-pool-size: ${DB_POOL_MAX:50}
+  minimum-idle: ${DB_POOL_MIN:10}
+  connection-timeout: ${DB_CONNECTION_TIMEOUT:3000}
+  validation-timeout: 1000
+
+# Prediction Configuration
+prediction:
+  default-algorithm: ${PREDICTION_DEFAULT_ALGORITHM:AUTO}
+  min-training-data-points: ${PREDICTION_MIN_POINTS:5}
+  default-forecast-days: ${PREDICTION_FORECAST_DAYS:30}
+  async-execution: ${PREDICTION_ASYNC:true}
+  dl-engine:
+    url: ${DL_ENGINE_URL:http://localhost:5000}
+    enabled: ${DL_ENGINE_ENABLED:false}

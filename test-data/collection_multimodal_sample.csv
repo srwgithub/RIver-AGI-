@@ -1,0 +1,5 @@
+id,文件名,模态,说明,标签,链接或路径
+1,invoice_001.png,IMAGE,发票或票据样本,票据,/backend/uploads/08197f15-89a7-4f88-8113-b26727379d0a.png
+2,inspection_clip.mov,VIDEO,巡检视频样本,巡检,请使用本地视频文件替换
+3,call_summary.mp3,AUDIO,电话回访摘要,客服,请使用本地音频文件替换
+4,review_note.txt,TEXT,商品评论文本,评价,见 collection_text_sample.csv

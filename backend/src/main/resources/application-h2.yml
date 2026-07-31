@@ -1,0 +1,110 @@
+server:
+  port: 8080
+
+spring:
+  application:
+    name: river-agi-backend
+  
+  servlet:
+    multipart:
+      max-file-size: 100MB
+      max-request-size: 100MB
+  
+  # Auto-configuration exclusions for H2 dev
+  autoconfigure:
+    exclude:
+      - org.springframework.boot.autoconfigure.data.redis.RedisAutoConfiguration
+      - org.springframework.boot.autoconfigure.amqp.RabbitAutoConfiguration
+      - org.springframework.ai.model.openai.autoconfigure.OpenAiAudioSpeechAutoConfiguration
+  
+  # Database - H2 In-Memory (for clean dev environment)
+  datasource:
+    url: jdbc:h2:mem:river_agi;DB_CLOSE_DELAY=-1
+    username: sa
+    password:
+    driver-class-name: org.h2.Driver
+  
+  # H2 Console
+  h2:
+    console:
+      enabled: true
+      path: /h2-console
+  
+  # Flyway - disabled for H2 dev (using schema.sql instead)
+  flyway:
+    enabled: false
+  
+  # SQL Init - Use H2-compatible schema
+  sql:
+    init:
+      mode: always
+      schema-locations: classpath:schema-h2.sql
+  
+  # Spring AI - DeepSeek
+  ai:
+    openai:
+      base-url: ${DEEPSEEK_BASE_URL:https://api.deepseek.com}
+      api-key: ${DEEPSEEK_API_KEY:}
+      chat:
+        options:
+          model: deepseek-chat
+
+# MinIO Configuration
+minio:
+  endpoint: ${MINIO_ENDPOINT:http://localhost:9000}
+  access-key: ${MINIO_ACCESS_KEY:minioadmin}
+  secret-key: ${MINIO_SECRET_KEY:minioadmin}
+  bucket-name: ${MINIO_BUCKET:river-agi}
+
+# MyBatis Plus
+mybatis-plus:
+  configuration:
+    map-underscore-to-camel-case: true
+    log-impl: org.apache.ibatis.logging.stdout.StdOutImpl
+  global-config:
+    db-config:
+      id-type: auto
+      logic-delete-field: deleted
+      logic-delete-value: 1
+      logic-not-delete-value: 0
+
+# Swagger/OpenAPI
+springdoc:
+  api-docs:
+    path: /api-docs
+  swagger-ui:
+    path: /swagger-ui.html
+
+# JWT Configuration
+jwt:
+  secret: ${JWT_SECRET:river-agi-default-secret-key-for-development-only-must-be-32chars-min}
+  expiration: ${JWT_EXPIRATION:86400000}
+
+# Encryption Configuration
+encryption:
+  master-key: ${ENCRYPTION_MASTER_KEY:}
+  algorithm: AES/GCM/NoPadding
+  enabled: ${ENCRYPTION_ENABLED:false}
+
+# Security Configuration
+security:
+  password-encoder: bcrypt
+
+# Management
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics
+  health:
+    redis:
+      enabled: false
+    db:
+      enabled: false
+
+# Logging
+logging:
+  level:
+    com.river.agi: DEBUG
+    org.springframework.security: INFO
+    org.mybatis.spring: DEBUG

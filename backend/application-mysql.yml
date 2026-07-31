@@ -1,0 +1,109 @@
+server:
+  port: 8080
+
+spring:
+  application:
+    name: river-agi-backend
+
+  autoconfigure:
+    exclude:
+      - org.springframework.boot.autoconfigure.data.redis.RedisAutoConfiguration
+      - org.springframework.boot.autoconfigure.amqp.RabbitAutoConfiguration
+      - org.springframework.ai.model.openai.autoconfigure.OpenAiAudioSpeechAutoConfiguration
+      - org.springframework.ai.model.openai.autoconfigure.OpenAiChatAutoConfiguration
+      - org.springframework.ai.model.openai.autoconfigure.OpenAiAudioTranscriptionAutoConfiguration
+      - org.springframework.ai.model.openai.autoconfigure.OpenAiEmbeddingAutoConfiguration
+      - org.springframework.ai.model.openai.autoconfigure.OpenAiImageAutoConfiguration
+      - org.springframework.ai.model.openai.autoconfigure.OpenAiModerationAutoConfiguration
+
+  servlet:
+    multipart:
+      max-file-size: 100MB
+      max-request-size: 100MB
+
+  datasource:
+    url: ${DB_URL:jdbc:mysql://localhost:3306/river_agi?useSSL=false&allowPublicKeyRetrieval=true&characterEncoding=UTF-8&serverTimezone=Asia/Shanghai&useUnicode=true}
+    username: ${DB_USERNAME}
+    password: ${DB_PASSWORD}
+    driver-class-name: com.mysql.cj.jdbc.Driver
+
+  flyway:
+    enabled: ${FLYWAY_ENABLED:true}
+    locations: classpath:db/migration
+    baseline-on-migrate: true
+    baseline-version: 0
+
+  sql:
+    init:
+      mode: ${SQL_INIT_MODE:never}
+
+  ai:
+    openai:
+      base-url: ${DEEPSEEK_BASE_URL:https://api.deepseek.com}
+      api-key: ${DEEPSEEK_API_KEY}
+      chat:
+        options:
+          model: ${DEEPSEEK_MODEL:deepseek-v4-flash}
+
+mybatis-plus:
+  configuration:
+    map-underscore-to-camel-case: true
+    log-impl: org.apache.ibatis.logging.stdout.StdOutImpl
+  global-config:
+    db-config:
+      id-type: auto
+      logic-delete-field: deleted
+      logic-delete-value: 1
+      logic-not-delete-value: 0
+
+springdoc:
+  api-docs:
+    path: /api-docs
+  swagger-ui:
+    path: /swagger-ui.html
+
+jwt:
+  secret: ${JWT_SECRET}
+  expiration: ${JWT_EXPIRATION:86400000}
+
+encryption:
+  master-key: ${ENCRYPTION_MASTER_KEY:river-agi-encryption-key-2026}
+  algorithm: AES/GCM/NoPadding
+  enabled: ${ENCRYPTION_ENABLED:false}
+
+security:
+  password-encoder: bcrypt
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics
+  health:
+    redis:
+      enabled: false
+    db:
+      enabled: true
+
+logging:
+  level:
+    com.river.agi: DEBUG
+    org.springframework.security: INFO
+    org.mybatis.spring: DEBUG
+
+app:
+  storage:
+    local-path: ${APP_STORAGE_PATH:./uploads}
+    base-url: ${APP_BASE_URL:http://localhost:8080}
+
+spring.datasource.hikari:
+  maximum-pool-size: 50
+  minimum-idle: 10
+  connection-timeout: 3000
+  validation-timeout: 1000
+
+prediction:
+  default-algorithm: ${PREDICTION_DEFAULT_ALGORITHM:AUTO}
+  min-training-data-points: ${PREDICTION_MIN_POINTS:5}
+  default-forecast-days: ${PREDICTION_FORECAST_DAYS:30}
+  async-execution: ${PREDICTION_ASYNC:true}

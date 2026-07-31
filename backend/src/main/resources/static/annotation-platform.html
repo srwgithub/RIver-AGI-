@@ -1,0 +1,1906 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>RIver AGI · 数据采集与标注平台</title>
+<script src="https://cdn.jsdelivr.net/npm/echarts@5.5.0/dist/echarts.min.js"></script>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC', 'Microsoft YaHei', sans-serif; background: #0a0e27; color: #e0e6ff; overflow-x: hidden; }
+.platform { min-height: 100vh; background: linear-gradient(135deg, #0a0e27 0%, #0d1538 50%, #0a0e27 100%); display: flex; flex-direction: column; }
+
+/* Header */
+.header { background: linear-gradient(90deg, #0f1845 0%, #1a1f5c 50%, #0f1845 100%); padding: 12px 24px; border-bottom: 2px solid #2a3080; display: flex; align-items: center; justify-content: space-between; box-shadow: 0 4px 20px rgba(64, 100, 255, 0.15); position: sticky; top: 0; z-index: 100; }
+.header-left { display: flex; align-items: center; gap: 16px; }
+.logo { width: 38px; height: 38px; background: linear-gradient(135deg, #4080ff, #7c5cff); border-radius: 10px; display: flex; align-items: center; justify-content: center; font-weight: bold; font-size: 18px; color: white; box-shadow: 0 0 20px rgba(64, 128, 255, 0.5); }
+.title-group h1 { font-size: 20px; font-weight: 700; background: linear-gradient(90deg, #7cacff, #b08cff); -webkit-background-clip: text; -webkit-text-fill-color: transparent; letter-spacing: 1px; }
+.title-group .subtitle { font-size: 11px; color: #6b7db8; margin-top: 2px; }
+.header-right { display: flex; align-items: center; gap: 14px; }
+.badge { padding: 4px 12px; border-radius: 20px; font-size: 12px; font-weight: 600; }
+.badge-live { background: linear-gradient(135deg, #00d976, #00b866); color: #fff; animation: pulse 2s infinite; }
+.badge-online { background: linear-gradient(135deg, #4080ff, #6060ff); color: #fff; }
+.user-info { display: flex; align-items: center; gap: 8px; padding: 4px 12px; background: rgba(64,128,255,0.1); border-radius: 20px; border: 1px solid rgba(64,128,255,0.3); }
+.avatar { width: 28px; height: 28px; border-radius: 50%; background: linear-gradient(135deg, #4080ff, #7c5cff); display: flex; align-items: center; justify-content: center; font-size: 12px; font-weight: 600; }
+@keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: 0.7; } }
+
+/* Layout */
+.layout { display: flex; flex: 1; overflow: hidden; }
+
+/* Sidebar */
+.sidebar { width: 240px; background: linear-gradient(180deg, #0f1640 0%, #0c1235 100%); border-right: 1px solid #2a3080; transition: width 0.3s ease; display: flex; flex-direction: column; flex-shrink: 0; }
+.sidebar.collapsed { width: 64px; }
+.sidebar-toggle { padding: 14px; display: flex; align-items: center; justify-content: flex-end; border-bottom: 1px solid #1a2050; cursor: pointer; color: #7b8cc8; transition: color 0.2s; }
+.sidebar-toggle:hover { color: #4080ff; }
+.sidebar.collapsed .sidebar-toggle { justify-content: center; }
+.nav-menu { flex: 1; overflow-y: auto; padding: 10px 0; }
+.nav-item { display: flex; align-items: center; gap: 12px; padding: 12px 20px; cursor: pointer; color: #8b9cd0; transition: all 0.2s; border-left: 3px solid transparent; font-size: 14px; }
+.nav-item:hover { background: rgba(64,128,255,0.08); color: #c0cdf0; }
+.nav-item.active { background: linear-gradient(90deg, rgba(64,128,255,0.15), transparent); color: #7cacff; border-left-color: #4080ff; }
+.nav-icon { font-size: 18px; width: 24px; text-align: center; flex-shrink: 0; }
+.nav-text { white-space: nowrap; overflow: hidden; }
+.sidebar.collapsed .nav-text { display: none; }
+.sidebar.collapsed .nav-item { justify-content: center; padding: 14px; }
+
+/* Main content */
+.main { flex: 1; overflow-y: auto; padding: 20px 24px; }
+.kpi-row { display: grid; grid-template-columns: repeat(6, 1fr); gap: 14px; margin-bottom: 20px; }
+.kpi-card { background: linear-gradient(145deg, #131a48, #0f1640); border: 1px solid #232b60; border-radius: 14px; padding: 18px; position: relative; overflow: hidden; transition: all 0.3s; }
+.kpi-card:hover { transform: translateY(-3px); border-color: #4060c0; box-shadow: 0 8px 30px rgba(64,128,255,0.2); }
+.kpi-card::before { content: ''; position: absolute; top: 0; left: 0; right: 0; height: 3px; border-radius: 14px 14px 0 0; }
+.kpi-card:nth-child(1)::before { background: linear-gradient(90deg, #4080ff, #7c5cff); }
+.kpi-card:nth-child(2)::before { background: linear-gradient(90deg, #00d976, #00b894); }
+.kpi-card:nth-child(3)::before { background: linear-gradient(90deg, #ffa502, #ffcc00); }
+.kpi-card:nth-child(4)::before { background: linear-gradient(90deg, #a55eea, #8854d0); }
+.kpi-card:nth-child(5)::before { background: linear-gradient(90deg, #26de81, #20bf6b); }
+.kpi-card:nth-child(6)::before { background: linear-gradient(90deg, #fd79a8, #e84393); }
+.kpi-label { font-size: 12px; color: #7b8cc8; margin-bottom: 8px; display: flex; align-items: center; gap: 6px; }
+.kpi-value { font-size: 24px; font-weight: 700; color: #fff; font-variant-numeric: tabular-nums; }
+.kpi-change { font-size: 11px; margin-top: 6px; display: flex; align-items: center; gap: 4px; }
+.kpi-change.up { color: #00d976; }
+.kpi-change.down { color: #ff4757; }
+.kpi-actions { margin-top: 10px; display: flex; gap: 6px; }
+.kpi-btn { padding: 4px 10px; font-size: 11px; background: rgba(64,128,255,0.15); border: 1px solid rgba(64,128,255,0.3); color: #7cacff; border-radius: 6px; cursor: pointer; transition: all 0.2s; }
+.kpi-btn:hover { background: rgba(64,128,255,0.25); }
+.kpi-progress { margin-top: 8px; height: 6px; background: #1a2050; border-radius: 3px; overflow: hidden; }
+.kpi-progress-bar { height: 100%; background: linear-gradient(90deg, #fd79a8, #e84393); border-radius: 3px; transition: width 1s ease; }
+
+/* Content pages */
+.page { display: none; }
+.page.active { display: block; animation: fadeIn 0.3s ease; }
+@keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+
+/* Panel */
+.panel { background: linear-gradient(145deg, #131a48, #0f1640); border: 1px solid #232b60; border-radius: 14px; overflow: hidden; margin-bottom: 16px; }
+.panel-header { padding: 14px 18px; display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #1a2050; }
+.panel-title { font-size: 15px; font-weight: 600; color: #d0d8f0; display: flex; align-items: center; gap: 8px; }
+.panel-title .dot { width: 8px; height: 8px; border-radius: 50%; background: #4080ff; box-shadow: 0 0 8px #4080ff; }
+.panel-body { padding: 18px; }
+
+/* Buttons */
+.btn { padding: 8px 16px; border-radius: 8px; font-size: 13px; font-weight: 600; cursor: pointer; border: none; transition: all 0.2s; display: inline-flex; align-items: center; gap: 6px; }
+.btn-primary { background: linear-gradient(135deg, #4080ff, #6060ff); color: #fff; }
+.btn-primary:hover { background: linear-gradient(135deg, #5090ff, #7070ff); transform: translateY(-1px); box-shadow: 0 4px 15px rgba(64,128,255,0.3); }
+.btn-success { background: linear-gradient(135deg, #00d976, #00b866); color: #fff; }
+.btn-success:hover { background: linear-gradient(135deg, #10e986, #10c876); }
+.btn-warning { background: linear-gradient(135deg, #ffa502, #e69500); color: #fff; }
+.btn-danger { background: linear-gradient(135deg, #ff4757, #e63e4c); color: #fff; }
+.btn-secondary { background: #1a2050; border: 1px solid #2a3080; color: #c0cdf0; }
+.btn-secondary:hover { background: #232b60; border-color: #4060c0; }
+.btn-sm { padding: 5px 12px; font-size: 12px; }
+.btn-group { display: flex; gap: 8px; flex-wrap: wrap; }
+
+/* Grid layouts */
+.grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+.grid-3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; }
+.grid-2-1 { display: grid; grid-template-columns: 2fr 1fr; gap: 16px; }
+.grid-1-2 { display: grid; grid-template-columns: 1fr 2fr; gap: 16px; }
+
+/* Table */
+.data-table { width: 100%; border-collapse: collapse; }
+.data-table th { text-align: left; padding: 12px 14px; font-size: 12px; font-weight: 600; color: #7b8cc8; text-transform: uppercase; letter-spacing: 0.5px; border-bottom: 1px solid #1a2050; background: rgba(64,128,255,0.03); }
+.data-table td { padding: 12px 14px; font-size: 13px; color: #c0cdf0; border-bottom: 1px solid #151b45; }
+.data-table tr:hover td { background: rgba(64,128,255,0.05); }
+.status-tag { display: inline-block; padding: 3px 10px; border-radius: 12px; font-size: 11px; font-weight: 600; }
+.status-success { background: rgba(0,217,118,0.15); color: #00d976; border: 1px solid rgba(0,217,118,0.3); }
+.status-running { background: rgba(64,128,255,0.15); color: #7cacff; border: 1px solid rgba(64,128,255,0.3); }
+.status-pending { background: rgba(255,165,2,0.15); color: #ffc048; border: 1px solid rgba(255,165,2,0.3); }
+.status-error { background: rgba(255,71,87,0.15); color: #ff6b81; border: 1px solid rgba(255,71,87,0.3); }
+.status-paused { background: rgba(108,122,170,0.15); color: #8b9cd0; border: 1px solid rgba(108,122,170,0.3); }
+.action-link { color: #7cacff; cursor: pointer; margin-right: 10px; font-size: 12px; transition: color 0.2s; }
+.action-link:hover { color: #a0c0ff; }
+.action-link.danger { color: #ff6b81; }
+.action-link.danger:hover { color: #ff8b9b; }
+
+/* Upload zone */
+.upload-zone { border: 2px dashed #2a3080; border-radius: 12px; padding: 40px; text-align: center; transition: all 0.3s; cursor: pointer; background: rgba(64,128,255,0.02); }
+.upload-zone:hover, .upload-zone.dragover { border-color: #4080ff; background: rgba(64,128,255,0.08); }
+.upload-icon { font-size: 48px; margin-bottom: 12px; opacity: 0.6; }
+.upload-text { font-size: 14px; color: #8b9cd0; margin-bottom: 8px; }
+.upload-hint { font-size: 12px; color: #5a6a9e; }
+.upload-types { display: flex; justify-content: center; gap: 12px; margin-top: 16px; flex-wrap: wrap; }
+.type-badge { padding: 4px 12px; background: rgba(64,128,255,0.1); border: 1px solid rgba(64,128,255,0.2); border-radius: 16px; font-size: 11px; color: #7cacff; }
+
+/* Dataset cards */
+.dataset-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 16px; }
+.dataset-card { background: linear-gradient(145deg, #131a48, #0f1640); border: 1px solid #232b60; border-radius: 14px; padding: 18px; transition: all 0.3s; position: relative; overflow: hidden; }
+.dataset-card:hover { transform: translateY(-4px); border-color: #4060c0; box-shadow: 0 10px 30px rgba(64,128,255,0.15); }
+.dataset-type-icon { width: 48px; height: 48px; border-radius: 12px; display: flex; align-items: center; justify-content: center; font-size: 24px; margin-bottom: 12px; }
+.dataset-type-icon.text { background: linear-gradient(135deg, rgba(64,128,255,0.2), rgba(96,96,255,0.1)); }
+.dataset-type-icon.image { background: linear-gradient(135deg, rgba(0,217,118,0.2), rgba(0,184,102,0.1)); }
+.dataset-type-icon.video { background: linear-gradient(135deg, rgba(255,71,87,0.2), rgba(230,62,76,0.1)); }
+.dataset-type-icon.table { background: linear-gradient(135deg, rgba(255,165,2,0.2), rgba(230,149,0,0.1)); }
+.dataset-name { font-size: 15px; font-weight: 600; color: #fff; margin-bottom: 6px; }
+.dataset-meta { font-size: 12px; color: #7b8cc8; margin-bottom: 12px; }
+.dataset-stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-bottom: 14px; }
+.dataset-stat { text-align: center; padding: 8px; background: rgba(64,128,255,0.05); border-radius: 8px; }
+.dataset-stat-value { font-size: 16px; font-weight: 700; color: #fff; }
+.dataset-stat-label { font-size: 10px; color: #7b8cc8; margin-top: 2px; }
+.dataset-quality { display: flex; align-items: center; gap: 8px; margin-bottom: 12px; }
+.quality-bar { flex: 1; height: 6px; background: #1a2050; border-radius: 3px; overflow: hidden; }
+.quality-fill { height: 100%; border-radius: 3px; }
+.quality-fill.high { background: linear-gradient(90deg, #00d976, #00b894); }
+.quality-fill.medium { background: linear-gradient(90deg, #ffa502, #ffcc00); }
+.quality-fill.low { background: linear-gradient(90deg, #ff4757, #ff6b81); }
+.quality-score { font-size: 12px; font-weight: 600; min-width: 36px; text-align: right; }
+.dataset-actions { display: flex; gap: 6px; flex-wrap: wrap; }
+
+/* Tag tree */
+.tag-tree { padding: 10px 0; }
+.tag-node { margin-bottom: 4px; }
+.tag-node-header { display: flex; align-items: center; gap: 8px; padding: 8px 12px; border-radius: 8px; cursor: pointer; transition: all 0.2s; }
+.tag-node-header:hover { background: rgba(64,128,255,0.08); }
+.tag-toggle { width: 18px; height: 18px; display: flex; align-items: center; justify-content: center; font-size: 10px; color: #7b8cc8; transition: transform 0.2s; }
+.tag-toggle.expanded { transform: rotate(90deg); }
+.tag-color { width: 12px; height: 12px; border-radius: 3px; flex-shrink: 0; }
+.tag-name { font-size: 13px; color: #c0cdf0; flex: 1; }
+.tag-count { font-size: 11px; color: #5a6a9e; background: rgba(64,128,255,0.1); padding: 2px 8px; border-radius: 10px; }
+.tag-children { padding-left: 24px; display: none; }
+.tag-children.expanded { display: block; }
+.tag-actions { display: flex; gap: 4px; opacity: 0; transition: opacity 0.2s; }
+.tag-node-header:hover .tag-actions { opacity: 1; }
+.tag-action-btn { width: 22px; height: 22px; border-radius: 4px; background: rgba(64,128,255,0.1); border: none; color: #7cacff; cursor: pointer; font-size: 11px; display: flex; align-items: center; justify-content: center; }
+.tag-action-btn:hover { background: rgba(64,128,255,0.2); }
+
+/* Tag group tabs */
+.tag-tabs { display: flex; gap: 4px; margin-bottom: 16px; border-bottom: 1px solid #1a2050; padding-bottom: 0; }
+.tag-tab { padding: 8px 16px; font-size: 13px; color: #7b8cc8; cursor: pointer; border-bottom: 2px solid transparent; transition: all 0.2s; }
+.tag-tab:hover { color: #c0cdf0; }
+.tag-tab.active { color: #7cacff; border-bottom-color: #4080ff; }
+
+/* Annotation workbench */
+.workbench { display: grid; grid-template-columns: 1fr 280px; gap: 16px; height: calc(100vh - 220px); min-height: 500px; }
+.workbench-main { background: linear-gradient(145deg, #131a48, #0f1640); border: 1px solid #232b60; border-radius: 14px; display: flex; flex-direction: column; overflow: hidden; }
+.workbench-toolbar { padding: 12px 16px; border-bottom: 1px solid #1a2050; display: flex; align-items: center; justify-content: space-between; }
+.workbench-content { flex: 1; padding: 24px; overflow-y: auto; display: flex; align-items: flex-start; justify-content: center; }
+.workbench-sidebar { background: linear-gradient(145deg, #131a48, #0f1640); border: 1px solid #232b60; border-radius: 14px; display: flex; flex-direction: column; overflow: hidden; }
+.sidebar-section { border-bottom: 1px solid #1a2050; }
+.sidebar-section-header { padding: 12px 16px; font-size: 12px; font-weight: 600; color: #7b8cc8; text-transform: uppercase; letter-spacing: 0.5px; background: rgba(64,128,255,0.03); }
+.sidebar-section-body { padding: 12px 16px; max-height: 300px; overflow-y: auto; }
+
+/* Text annotation */
+.text-annotation-area { background: #0c1235; border: 1px solid #1a2050; border-radius: 10px; padding: 24px; font-size: 15px; line-height: 2; color: #d0d8f0; width: 100%; max-width: 700px; position: relative; user-select: none; }
+.annotated-text { position: relative; cursor: pointer; padding: 2px 4px; border-radius: 4px; transition: all 0.2s; }
+.annotated-text:hover { filter: brightness(1.2); }
+.annotated-text.person { background: rgba(64,128,255,0.3); border-bottom: 2px solid #4080ff; }
+.annotated-text.location { background: rgba(0,217,118,0.3); border-bottom: 2px solid #00d976; }
+.annotated-text.organization { background: rgba(255,165,2,0.3); border-bottom: 2px solid #ffa502; }
+.annotated-text.date { background: rgba(165,94,234,0.3); border-bottom: 2px solid #a55eea; }
+.text-select-hint { position: absolute; bottom: -40px; left: 50%; transform: translateX(-50%); background: rgba(64,128,255,0.2); border: 1px solid rgba(64,128,255,0.4); padding: 6px 14px; border-radius: 20px; font-size: 12px; color: #7cacff; white-space: nowrap; }
+
+/* Image annotation */
+.image-canvas { background: #0c1235; border: 1px solid #1a2050; border-radius: 10px; width: 100%; max-width: 700px; aspect-ratio: 16/10; position: relative; overflow: hidden; background-image: linear-gradient(45deg, #131a48 25%, transparent 25%), linear-gradient(-45deg, #131a48 25%, transparent 25%), linear-gradient(45deg, transparent 75%, #131a48 75%), linear-gradient(-45deg, transparent 75%, #131a48 75%); background-size: 20px 20px; background-position: 0 0, 0 10px, 10px -10px, -10px 0px; }
+.image-placeholder { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; flex-direction: column; color: #5a6a9e; }
+.bbox { position: absolute; border: 2px solid; border-radius: 4px; cursor: pointer; transition: all 0.2s; }
+.bbox:hover { border-width: 3px; }
+.bbox.person { border-color: #4080ff; background: rgba(64,128,255,0.1); }
+.bbox.car { border-color: #00d976; background: rgba(0,217,118,0.1); }
+.bbox.traffic-light { border-color: #ffa502; background: rgba(255,165,2,0.1); }
+.bbox-label { position: absolute; top: -22px; left: -2px; padding: 2px 8px; font-size: 11px; font-weight: 600; border-radius: 4px 4px 0 0; white-space: nowrap; }
+.bbox.person .bbox-label { background: #4080ff; color: #fff; }
+.bbox.car .bbox-label { background: #00d976; color: #fff; }
+.bbox.traffic-light .bbox-label { background: #ffa502; color: #fff; }
+
+/* Label panel */
+.label-item { display: flex; align-items: center; gap: 10px; padding: 10px; border-radius: 8px; cursor: pointer; transition: all 0.2s; margin-bottom: 4px; border: 1px solid transparent; }
+.label-item:hover { background: rgba(64,128,255,0.08); }
+.label-item.selected { background: rgba(64,128,255,0.12); border-color: rgba(64,128,255,0.3); }
+.label-dot { width: 14px; height: 14px; border-radius: 4px; flex-shrink: 0; }
+.label-info { flex: 1; }
+.label-name { font-size: 13px; color: #e0e6ff; font-weight: 500; }
+.label-shortcut { font-size: 11px; color: #5a6a9e; margin-top: 2px; }
+
+/* Workbench actions */
+.workbench-actions { padding: 12px 16px; border-top: 1px solid #1a2050; display: flex; gap: 8px; justify-content: center; }
+.workbench-shortcuts { padding: 12px 16px; background: rgba(64,128,255,0.03); border-top: 1px solid #1a2050; }
+.shortcuts-title { font-size: 11px; color: #5a6a9e; margin-bottom: 8px; text-transform: uppercase; letter-spacing: 0.5px; }
+.shortcuts-list { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+.shortcut-item { display: flex; align-items: center; gap: 6px; font-size: 11px; color: #7b8cc8; }
+.shortcut-key { padding: 2px 6px; background: #1a2050; border: 1px solid #2a3080; border-radius: 4px; font-family: monospace; color: #c0cdf0; min-width: 24px; text-align: center; }
+
+/* Annotator list */
+.annotator-list { display: flex; flex-direction: column; gap: 10px; }
+.annotator-item { display: flex; align-items: center; gap: 12px; padding: 12px; background: rgba(64,128,255,0.04); border: 1px solid #1a2050; border-radius: 10px; transition: all 0.2s; }
+.annotator-item:hover { border-color: rgba(64,128,255,0.3); background: rgba(64,128,255,0.08); }
+.annotator-avatar { width: 40px; height: 40px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-weight: 600; font-size: 14px; position: relative; }
+.annotator-avatar::after { content: ''; position: absolute; bottom: 0; right: 0; width: 12px; height: 12px; border-radius: 50%; border: 2px solid #131a48; }
+.annotator-avatar.online::after { background: #00d976; }
+.annotator-avatar.busy::after { background: #ffa502; }
+.annotator-avatar.away::after { background: #8b9cd0; }
+.annotator-info { flex: 1; }
+.annotator-name { font-size: 13px; font-weight: 600; color: #e0e6ff; }
+.annotator-task { font-size: 11px; color: #7b8cc8; margin-top: 2px; }
+.annotator-stats { display: flex; gap: 12px; }
+.annotator-stat { text-align: right; }
+.annotator-stat-value { font-size: 14px; font-weight: 700; color: #7cacff; }
+.annotator-stat-label { font-size: 10px; color: #5a6a9e; }
+
+/* Activity feed */
+.activity-feed { max-height: 400px; overflow-y: auto; }
+.activity-item { display: flex; gap: 12px; padding: 12px 0; border-bottom: 1px solid #151b45; }
+.activity-item:last-child { border-bottom: none; }
+.activity-avatar { width: 32px; height: 32px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 12px; font-weight: 600; flex-shrink: 0; }
+.activity-content { flex: 1; }
+.activity-text { font-size: 13px; color: #c0cdf0; line-height: 1.5; }
+.activity-text .highlight { color: #7cacff; font-weight: 500; }
+.activity-time { font-size: 11px; color: #5a6a9e; margin-top: 4px; }
+
+/* Modal */
+.modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.6); backdrop-filter: blur(4px); display: none; align-items: center; justify-content: center; z-index: 1000; }
+.modal-overlay.show { display: flex; animation: fadeIn 0.2s ease; }
+.modal { background: linear-gradient(145deg, #131a48, #0f1640); border: 1px solid #2a3080; border-radius: 16px; width: 90%; max-width: 560px; max-height: 80vh; overflow: hidden; animation: slideUp 0.3s ease; }
+@keyframes slideUp { from { opacity: 0; transform: translateY(20px); } to { opacity: 1; transform: translateY(0); } }
+.modal-header { padding: 18px 20px; border-bottom: 1px solid #1a2050; display: flex; align-items: center; justify-content: space-between; }
+.modal-title { font-size: 16px; font-weight: 600; color: #fff; }
+.modal-close { width: 30px; height: 30px; border-radius: 8px; background: rgba(255,255,255,0.05); border: none; color: #8b9cd0; cursor: pointer; font-size: 18px; display: flex; align-items: center; justify-content: center; transition: all 0.2s; }
+.modal-close:hover { background: rgba(255,71,87,0.2); color: #ff6b81; }
+.modal-body { padding: 20px; overflow-y: auto; max-height: 60vh; }
+.modal-footer { padding: 16px 20px; border-top: 1px solid #1a2050; display: flex; justify-content: flex-end; gap: 10px; }
+
+/* Form */
+.form-group { margin-bottom: 16px; }
+.form-label { display: block; font-size: 13px; color: #8b9cd0; margin-bottom: 6px; font-weight: 500; }
+.form-input, .form-select, .form-textarea { width: 100%; padding: 10px 14px; background: #0c1235; border: 1px solid #2a3080; border-radius: 8px; color: #e0e6ff; font-size: 13px; outline: none; transition: all 0.2s; font-family: inherit; }
+.form-input:focus, .form-select:focus, .form-textarea:focus { border-color: #4080ff; box-shadow: 0 0 0 3px rgba(64,128,255,0.2); }
+.form-textarea { min-height: 100px; resize: vertical; }
+.form-select { cursor: pointer; }
+.form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.assign-list { max-height: 200px; overflow-y: auto; border: 1px solid #1a2050; border-radius: 8px; }
+.assign-item { display: flex; align-items: center; gap: 10px; padding: 10px 14px; cursor: pointer; transition: background 0.2s; border-bottom: 1px solid #151b45; }
+.assign-item:last-child { border-bottom: none; }
+.assign-item:hover { background: rgba(64,128,255,0.08); }
+.assign-item.selected { background: rgba(64,128,255,0.15); }
+.assign-checkbox { width: 18px; height: 18px; border-radius: 4px; border: 2px solid #2a3080; display: flex; align-items: center; justify-content: center; transition: all 0.2s; }
+.assign-item.selected .assign-checkbox { background: #4080ff; border-color: #4080ff; }
+
+/* Chart containers */
+.chart-container { width: 100%; height: 300px; }
+
+/* Tabs */
+.content-tabs { display: flex; gap: 4px; margin-bottom: 16px; background: rgba(64,128,255,0.05); padding: 4px; border-radius: 10px; width: fit-content; }
+.content-tab { padding: 8px 18px; font-size: 13px; color: #7b8cc8; cursor: pointer; border-radius: 8px; transition: all 0.2s; }
+.content-tab:hover { color: #c0cdf0; }
+.content-tab.active { background: linear-gradient(135deg, #4080ff, #6060ff); color: #fff; font-weight: 600; }
+
+/* Rule editor */
+.rule-editor { background: #0c1235; border: 1px solid #1a2050; border-radius: 10px; padding: 16px; }
+.rule-list { margin-top: 12px; }
+.rule-item { display: flex; align-items: center; gap: 10px; padding: 10px; background: rgba(64,128,255,0.04); border-radius: 8px; margin-bottom: 8px; }
+.rule-num { width: 24px; height: 24px; border-radius: 50%; background: rgba(64,128,255,0.2); color: #7cacff; display: flex; align-items: center; justify-content: center; font-size: 12px; font-weight: 600; }
+.rule-text { flex: 1; font-size: 13px; color: #c0cdf0; }
+
+/* Preview table */
+.preview-table { width: 100%; border-collapse: collapse; font-size: 12px; }
+.preview-table th { text-align: left; padding: 10px; background: rgba(64,128,255,0.06); color: #7c8cc8; font-weight: 600; border-bottom: 1px solid #1a2050; }
+.preview-table td { padding: 10px; border-bottom: 1px solid #151b45; color: #a0acd4; }
+
+/* Scrollbar */
+::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar-track { background: #0a0e27; }
+::-webkit-scrollbar-thumb { background: #2a3080; border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: #4060c0; }
+
+/* Responsive */
+@media (max-width: 1400px) {
+  .kpi-row { grid-template-columns: repeat(3, 1fr); }
+}
+@media (max-width: 1100px) {
+  .grid-2, .grid-3, .grid-2-1, .grid-1-2 { grid-template-columns: 1fr; }
+  .workbench { grid-template-columns: 1fr; height: auto; }
+  .workbench-main { min-height: 400px; }
+}
+@media (max-width: 768px) {
+  .kpi-row { grid-template-columns: repeat(2, 1fr); }
+  .sidebar { position: fixed; left: -240px; top: 62px; bottom: 0; z-index: 99; }
+  .sidebar.mobile-open { left: 0; }
+  .main { padding: 14px; }
+}
+/* RIver light theme alignment with Vue dashboard */
+:root {
+  --bg-primary: #f3f6f7;
+  --bg-secondary: #ffffff;
+  --bg-tertiary: #f7f9fc;
+  --border-color: #dfe6ef;
+  --primary-color: #0f766e;
+  --primary: #0f766e;
+  --success-color: #15803d;
+  --success: #15803d;
+  --warning-color: #b45309;
+  --warning: #b45309;
+  --danger-color: #c2415a;
+  --danger: #c2415a;
+  --text-primary: #202936;
+  --text-secondary: #687586;
+  --text-muted: #94a3b8;
+}
+body { background: #f3f6f7 !important; color: #202936 !important; }
+.dashboard, .platform, .app, .layout, .page, .main, .content, .main-content {
+  background: #f3f6f7 !important;
+  color: #202936 !important;
+}
+.header, .topbar {
+  background: #fff !important;
+  border-bottom: 1px solid #e8edf3 !important;
+  box-shadow: none !important;
+}
+.logo, .avatar { background: #0f766e !important; box-shadow: none !important; color: #fff !important; }
+.title-group h1, h1, h2, h3, .chart-title, .panel-title {
+  color: #202936 !important;
+  background: none !important;
+  -webkit-text-fill-color: currentColor !important;
+}
+.subtitle, .time-display, .kpi-label, .muted, small { color: #94a3b8 !important; }
+.badge, .badge-live, .badge-online, .badge-alert {
+  background: #e2f3f0 !important;
+  color: #0f766e !important;
+  border: 1px solid #b8dfd8 !important;
+  animation: none !important;
+}
+.sidebar {
+  background: #fff !important;
+  border-right: 1px solid #e8edf3 !important;
+}
+.sidebar-toggle { border-bottom-color: #e8edf3 !important; color: #94a3b8 !important; }
+.nav-item, .menu-item { color: #687586 !important; }
+.nav-item:hover, .menu-item:hover { background: #edf8f6 !important; color: #0f766e !important; }
+.nav-item.active, .menu-item.active {
+  background: #e2f3f0 !important;
+  color: #0f766e !important;
+  border-left-color: #0f766e !important;
+}
+.kpi-card, .chart-panel, .panel, .card, .table-panel, .upload-zone, .task-card {
+  background: #fff !important;
+  border: 1px solid #dfe6ef !important;
+  box-shadow: 0 2px 8px rgba(15,23,42,.035) !important;
+}
+.kpi-card:hover, .chart-panel:hover, .panel:hover, .card:hover {
+  transform: translateY(-2px);
+  border-color: #b8dfd8 !important;
+  box-shadow: 0 10px 24px rgba(15,118,110,.08) !important;
+}
+.kpi-card::before { background: #0f766e !important; }
+.kpi-value { color: #202936 !important; }
+.panel-header, .chart-header, th { background: #f7f9fc !important; color: #64748b !important; border-color: #e8edf3 !important; }
+td { color: #334155 !important; border-color: #eef2f6 !important; }
+tr:hover td { background: #edf8f6 !important; }
+button, .btn, .btn-primary, .btn-success, .btn-warning, .btn-danger, .kpi-btn {
+  background: #0f766e !important;
+  color: #fff !important;
+  border: 1px solid #0f766e !important;
+  border-radius: 7px !important;
+}
+button:hover, .btn:hover, .kpi-btn:hover { background: #115e59 !important; border-color: #115e59 !important; }
+.dot, .panel-title .dot { background: #0f766e !important; box-shadow: none !important; }
+.trend-up, .up { color: #15803d !important; }
+.trend-down, .down, .danger { color: #c2415a !important; }
+</style>
+</head>
+<body>
+<div class="platform">
+  <div class="header">
+    <div class="header-left">
+      <div class="logo">R</div>
+      <div class="title-group">
+        <h1>RIver AGI · 数据采集与标注平台</h1>
+        <div class="subtitle">Data Collection & Annotation Platform · v2.0</div>
+      </div>
+    </div>
+    <div class="header-right">
+      <span class="badge badge-live">● 系统运行中</span>
+      <span class="badge badge-online" id="onlineCount">在线 23 人</span>
+      <div class="user-info">
+        <div class="avatar">管</div>
+        <span style="font-size:13px;">管理员</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="layout">
+    <div class="sidebar" id="sidebar">
+      <div class="sidebar-toggle" onclick="toggleSidebar()">
+        <span id="toggleIcon">◀</span>
+      </div>
+      <div class="nav-menu">
+        <div class="nav-item active" data-page="collection" onclick="switchPage('collection')">
+          <span class="nav-icon">📥</span>
+          <span class="nav-text">数据采集管理</span>
+        </div>
+        <div class="nav-item" data-page="datasets" onclick="switchPage('datasets')">
+          <span class="nav-icon">📊</span>
+          <span class="nav-text">数据集管理</span>
+        </div>
+        <div class="nav-item" data-page="labels" onclick="switchPage('labels')">
+          <span class="nav-icon">🏷️</span>
+          <span class="nav-text">标签体系管理</span>
+        </div>
+        <div class="nav-item" data-page="tasks" onclick="switchPage('tasks')">
+          <span class="nav-icon">📋</span>
+          <span class="nav-text">标注任务管理</span>
+        </div>
+        <div class="nav-item" data-page="workbench" onclick="switchPage('workbench')">
+          <span class="nav-icon">✏️</span>
+          <span class="nav-text">标注工作台</span>
+        </div>
+        <div class="nav-item" data-page="quality" onclick="switchPage('quality')">
+          <span class="nav-icon">🔍</span>
+          <span class="nav-text">标注质量抽检</span>
+        </div>
+        <div class="nav-item" data-page="collaboration" onclick="switchPage('collaboration')">
+          <span class="nav-icon">👥</span>
+          <span class="nav-text">协同标注中心</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="main">
+      <div class="kpi-row">
+        <div class="kpi-card">
+          <div class="kpi-label">📁 数据集总数</div>
+          <div class="kpi-value" id="kpiDatasets">128</div>
+          <div class="kpi-change up">↑ 本月新增 12 个</div>
+          <div class="kpi-actions">
+            <button class="kpi-btn" onclick="showUploadModal()">+ 上传</button>
+            <button class="kpi-btn" onclick="showImportModal()">+ 导入</button>
+          </div>
+        </div>
+        <div class="kpi-card">
+          <div class="kpi-label">📈 今日新增数据</div>
+          <div class="kpi-value" id="kpiToday">12,458</div>
+          <div class="kpi-change up">↑ 18.3% 较昨日</div>
+        </div>
+        <div class="kpi-card">
+          <div class="kpi-label">🔄 进行中标注任务</div>
+          <div class="kpi-value" id="kpiActiveTasks">36</div>
+          <div class="kpi-change flat">8 个待分配</div>
+        </div>
+        <div class="kpi-card">
+          <div class="kpi-label">✅ 已完成标注条数</div>
+          <div class="kpi-value" id="kpiAnnotated">2.8M</div>
+          <div class="kpi-change up">↑ 本周 +156K</div>
+        </div>
+        <div class="kpi-card">
+          <div class="kpi-label">👤 标注员在线</div>
+          <div class="kpi-value" id="kpiOnline">23/45</div>
+          <div class="kpi-change up">18 人标注中</div>
+        </div>
+        <div class="kpi-card">
+          <div class="kpi-label">📊 平均标注进度</div>
+          <div class="kpi-value" id="kpiProgress">67.8%</div>
+          <div class="kpi-progress">
+            <div class="kpi-progress-bar" style="width: 67.8%"></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="page active" id="page-collection">
+        <div class="grid-2-1" style="margin-bottom:16px;">
+          <div class="panel">
+            <div class="panel-header">
+              <div class="panel-title"><span class="dot"></span>近7天采集量趋势</div>
+              <div class="btn-group">
+                <button class="btn btn-secondary btn-sm" onclick="refreshCollectionChart()">🔄 刷新</button>
+              </div>
+            </div>
+            <div class="panel-body">
+              <div id="collectionChart" class="chart-container"></div>
+            </div>
+          </div>
+          <div class="panel">
+            <div class="panel-header">
+              <div class="panel-title"><span class="dot"></span>数据源类型分布</div>
+            </div>
+            <div class="panel-body">
+              <div id="sourceTypeChart" style="width:100%;height:260px;"></div>
+            </div>
+          </div>
+        </div>
+        <div class="panel">
+          <div class="panel-header">
+            <div class="panel-title"><span class="dot"></span>数据源配置</div>
+            <div class="btn-group">
+              <button class="btn btn-primary btn-sm" onclick="showAddSourceModal()">+ 新增数据源</button>
+            </div>
+          </div>
+          <div class="panel-body" style="padding:0;">
+            <table class="data-table">
+              <thead>
+                <tr>
+                  <th>数据源名称</th>
+                  <th>来源类型</th>
+                  <th>状态</th>
+                  <th>最近同步</th>
+                  <th>数据量</th>
+                  <th>操作</th>
+                </tr>
+              </thead>
+              <tbody id="sourceTableBody"></tbody>
+            </table>
+          </div>
+        </div>
+        <div class="panel">
+          <div class="panel-header">
+            <div class="panel-title"><span class="dot"></span>文件上传（支持多模态）</div>
+          </div>
+          <div class="panel-body">
+            <div class="upload-zone" id="uploadZone" onclick="document.getElementById('fileInput').click()">
+              <div class="upload-icon">📁</div>
+              <div class="upload-text">点击或拖拽文件到此处上传</div>
+              <div class="upload-hint">支持单个或批量上传，单文件最大 2GB</div>
+              <div class="upload-types">
+                <span class="type-badge">📄 CSV</span>
+                <span class="type-badge">📋 JSON</span>
+                <span class="type-badge">📝 TXT</span>
+                <span class="type-badge">🖼️ JPG/PNG</span>
+                <span class="type-badge">🎬 MP4/AVI</span>
+                <span class="type-badge">📊 XLSX</span>
+              </div>
+              <input type="file" id="fileInput" multiple style="display:none;" onchange="handleFileUpload(this.files)">
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="page" id="page-datasets">
+        <div class="panel">
+          <div class="panel-header">
+            <div class="panel-title"><span class="dot"></span>数据集列表</div>
+            <div class="btn-group">
+              <button class="btn btn-secondary btn-sm">🔍 筛选</button>
+              <button class="btn btn-primary btn-sm" onclick="showCreateDatasetModal()">+ 创建数据集</button>
+            </div>
+          </div>
+          <div class="panel-body">
+            <div class="btn-group" style="margin-bottom:16px;">
+              <button class="btn btn-sm" style="background:rgba(64,128,255,0.2);color:#7cacff;border:1px solid rgba(64,128,255,0.3);">全部类型</button>
+              <button class="btn btn-secondary btn-sm">📝 文本</button>
+              <button class="btn btn-secondary btn-sm">🖼️ 图片</button>
+              <button class="btn btn-secondary btn-sm">🎬 视频</button>
+              <button class="btn btn-secondary btn-sm">📊 表格</button>
+            </div>
+            <div class="dataset-grid" id="datasetGrid"></div>
+          </div>
+        </div>
+        <div class="panel">
+          <div class="panel-header">
+            <div class="panel-title"><span class="dot"></span>数据集预览 - 客服对话语料_v2</div>
+            <div class="btn-group">
+              <button class="btn btn-secondary btn-sm">数据清洗</button>
+              <button class="btn btn-primary btn-sm">导出数据集</button>
+            </div>
+          </div>
+          <div class="panel-body">
+            <div class="grid-3" style="margin-bottom:16px;">
+              <div style="padding:14px;background:rgba(64,128,255,0.05);border-radius:10px;text-align:center;">
+                <div style="font-size:24px;font-weight:700;color:#7cacff;">50,000</div>
+                <div style="font-size:12px;color:#7b8cc8;margin-top:4px;">总条数</div>
+              </div>
+              <div style="padding:14px;background:rgba(0,217,118,0.05);border-radius:10px;text-align:center;">
+                <div style="font-size:24px;font-weight:700;color:#00d976;">48,230</div>
+                <div style="font-size:12px;color:#7b8cc8;margin-top:4px;">有效条数</div>
+              </div>
+              <div style="padding:14px;background:rgba(255,165,2,0.05);border-radius:10px;text-align:center;">
+                <div style="font-size:24px;font-weight:700;color:#ffa502;">1,770</div>
+                <div style="font-size:12px;color:#7b8cc8;margin-top:4px;">待清洗条数</div>
+              </div>
+            </div>
+            <div style="display:flex;gap:8px;margin-bottom:16px;flex-wrap:wrap;">
+              <button class="btn btn-sm btn-secondary">🔄 去重 (128条重复)</button>
+              <button class="btn btn-sm btn-secondary">🗑️ 去空值 (45条)</button>
+              <button class="btn btn-sm btn-secondary">✅ 格式校验</button>
+              <button class="btn btn-sm btn-secondary">🚫 敏感词过滤 (23条)</button>
+            </div>
+            <div style="overflow-x:auto;">
+              <table class="preview-table">
+                <thead>
+                  <tr>
+                    <th>ID</th>
+                    <th>会话ID</th>
+                    <th>用户问题</th>
+                    <th>客服回复</th>
+                    <th>意图标签</th>
+                    <th>情感</th>
+                    <th>时间戳</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr><td>001</td><td>SESS_001</td><td>请问怎么退款？</td><td>您好，请在订单页面申请退款...</td><td>退款咨询</td><td style="color:#ffa502;">中性</td><td>2024-01-15 10:23</td></tr>
+                  <tr><td>002</td><td>SESS_002</td><td>这个产品太好了！</td><td>感谢您的认可，我们会继续努力...</td><td>好评反馈</td><td style="color:#00d976;">正面</td><td>2024-01-15 10:45</td></tr>
+                  <tr><td>003</td><td>SESS_003</td><td>物流太慢了，等了一周还没到</td><td>非常抱歉给您带来不便...</td><td>物流投诉</td><td style="color:#ff4757;">负面</td><td>2024-01-15 11:02</td></tr>
+                  <tr><td>004</td><td>SESS_004</td><td>怎么修改收货地址？</td><td>请在个人中心-地址管理中修改...</td><td>操作咨询</td><td style="color:#ffa502;">中性</td><td>2024-01-15 11:15</td></tr>
+                  <tr><td>005</td><td>SESS_005</td><td>会员有什么特权？</td><td>会员可享受免运费、专属折扣...</td><td>会员咨询</td><td style="color:#ffa502;">中性</td><td>2024-01-15 11:30</td></tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="page" id="page-labels">
+        <div class="grid-1-2">
+          <div class="panel">
+            <div class="panel-header">
+              <div class="panel-title"><span class="dot"></span>标签体系</div>
+              <button class="btn btn-primary btn-sm" onclick="addRootTag()">+ 根标签</button>
+            </div>
+            <div class="panel-body">
+              <div class="tag-tabs">
+                <div class="tag-tab active" onclick="switchTagGroup(this, 'entity')">实体标签</div>
+                <div class="tag-tab" onclick="switchTagGroup(this, 'relation')">关系标签</div>
+                <div class="tag-tab" onclick="switchTagGroup(this, 'category')">分类标签</div>
+                <div class="tag-tab" onclick="switchTagGroup(this, 'attribute')">属性标签</div>
+              </div>
+              <div class="tag-tree" id="tagTree"></div>
+            </div>
+          </div>
+          <div>
+            <div class="panel" style="margin-bottom:16px;">
+              <div class="panel-header">
+                <div class="panel-title"><span class="dot"></span>标签组配置</div>
+              </div>
+              <div class="panel-body">
+                <div class="form-group">
+                  <label class="form-label">标签组名称</label>
+                  <input type="text" class="form-input" value="通用命名实体识别" readonly>
+                </div>
+                <div class="form-row">
+                  <div class="form-group">
+                    <label class="form-label">标签类型</label>
+                    <select class="form-select">
+                      <option>实体 (Entity)</option>
+                      <option>关系 (Relation)</option>
+                      <option>分类 (Category)</option>
+                      <option>属性 (Attribute)</option>
+                    </select>
+                  </div>
+                  <div class="form-group">
+                    <label class="form-label">标注模式</label>
+                    <select class="form-select">
+                      <option>BIO标注</option>
+                      <option>BIOES标注</option>
+                      <option> spans标注</option>
+                    </select>
+                  </div>
+                </div>
+                <div class="form-group">
+                  <label class="form-label">颜色配置</label>
+                  <div style="display:flex;gap:8px;flex-wrap:wrap;">
+                    <div style="width:28px;height:28px;border-radius:6px;background:#4080ff;cursor:pointer;border:2px solid #fff;"></div>
+                    <div style="width:28px;height:28px;border-radius:6px;background:#00d976;cursor:pointer;"></div>
+                    <div style="width:28px;height:28px;border-radius:6px;background:#ffa502;cursor:pointer;"></div>
+                    <div style="width:28px;height:28px;border-radius:6px;background:#a55eea;cursor:pointer;"></div>
+                    <div style="width:28px;height:28px;border-radius:6px;background:#ff4757;cursor:pointer;"></div>
+                    <div style="width:28px;height:28px;border-radius:6px;background:#26de81;cursor:pointer;"></div>
+                    <div style="width:28px;height:28px;border-radius:6px;background:#fd79a8;cursor:pointer;"></div>
+                    <div style="width:28px;height:28px;border-radius:6px;background:#45aaf2;cursor:pointer;"></div>
+                  </div>
+                </div>
+                <button class="btn btn-primary" style="width:100%;">保存配置</button>
+              </div>
+            </div>
+            <div class="panel">
+              <div class="panel-header">
+                <div class="panel-title"><span class="dot"></span>标注规则编辑器</div>
+              </div>
+              <div class="panel-body">
+                <div class="rule-editor">
+                  <div style="font-size:13px;color:#c0cdf0;margin-bottom:8px;">📌 实体标注规则</div>
+                  <div class="rule-list">
+                    <div class="rule-item">
+                      <div class="rule-num">1</div>
+                      <div class="rule-text">人名：标注真实姓名、笔名、昵称等（不含代称如"他"、"她"）</div>
+                    </div>
+                    <div class="rule-item">
+                      <div class="rule-num">2</div>
+                      <div class="rule-text">地名：标注国家、城市、街道、地标建筑等具体地理位置</div>
+                    </div>
+                    <div class="rule-item">
+                      <div class="rule-num">3</div>
+                      <div class="rule-text">组织机构：标注公司、政府机构、学校、团体等正式组织名称</div>
+                    </div>
+                    <div class="rule-item">
+                      <div class="rule-num">4</div>
+                      <div class="rule-text">时间：标注具体日期、时间点、时间段，不标注模糊时间如"很久以前"</div>
+                    </div>
+                  </div>
+                  <button class="btn btn-secondary btn-sm" style="margin-top:12px;">+ 添加规则</button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="page" id="page-tasks">
+        <div class="grid-2" style="margin-bottom:16px;">
+          <div class="panel">
+            <div class="panel-header">
+              <div class="panel-title"><span class="dot"></span>任务状态概览</div>
+            </div>
+            <div class="panel-body">
+              <div id="taskStatusChart" class="chart-container" style="height:260px;"></div>
+            </div>
+          </div>
+          <div class="panel">
+            <div class="panel-header">
+              <div class="panel-title"><span class="dot"></span>标注进度甘特图</div>
+            </div>
+            <div class="panel-body">
+              <div id="ganttChart" class="chart-container" style="height:260px;"></div>
+            </div>
+          </div>
+        </div>
+        <div class="panel">
+          <div class="panel-header">
+            <div class="panel-title"><span class="dot"></span>标注任务列表</div>
+            <div class="btn-group">
+              <button class="btn btn-primary btn-sm" onclick="showCreateTaskModal()">+ 创建任务</button>
+            </div>
+          </div>
+          <div class="panel-body" style="padding:0;">
+            <table class="data-table">
+              <thead>
+                <tr>
+                  <th>任务名称</th>
+                  <th>数据集</th>
+                  <th>标签体系</th>
+                  <th>状态</th>
+                  <th>进度</th>
+                  <th>标注员</th>
+                  <th>质量分</th>
+                  <th>操作</th>
+                </tr>
+              </thead>
+              <tbody id="taskTableBody"></tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+      <div class="page" id="page-workbench">
+        <div class="content-tabs">
+          <div class="content-tab active" onclick="switchAnnotationMode(this, 'text')">📝 文本标注</div>
+          <div class="content-tab" onclick="switchAnnotationMode(this, 'image')">🖼️ 图片标注</div>
+        </div>
+        <div class="workbench" id="textWorkbench">
+          <div class="workbench-main">
+            <div class="workbench-toolbar">
+              <div style="display:flex;align-items:center;gap:12px;">
+                <span style="font-size:13px;color:#7b8cc8;">任务：</span>
+                <span style="font-size:13px;color:#e0e6ff;font-weight:500;">客服对话意图识别</span>
+                <span style="font-size:12px;color:#5a6a9e;">|</span>
+                <span style="font-size:13px;color:#7b8cc8;">进度：</span>
+                <span style="font-size:13px;color:#00d976;">156 / 500</span>
+              </div>
+              <div style="font-size:12px;color:#5a6a9e;">
+                已用时间: 32:15
+              </div>
+            </div>
+            <div class="workbench-content">
+              <div class="text-annotation-area" id="textArea">
+                <p><span class="annotated-text date">2024年1月15日</span>，<span class="annotated-text person">张先生</span>来到<span class="annotated-text location">北京市朝阳区建国路</span>的<span class="annotated-text organization">阿里巴巴集团总部</span>，与<span class="annotated-text person">李总监</span>进行了关于人工智能技术合作的洽谈。<span class="annotated-text person">张先生</span>表示，<span class="annotated-text organization">阿里巴巴</span>在<span class="annotated-text location">杭州</span>的研发中心在自然语言处理领域取得了显著成果。双方约定于<span class="annotated-text date">下周三上午10点</span>在<span class="annotated-text location">上海浦东</span>的分公司签署正式合作协议。洽谈期间，<span class="annotated-text person">王经理</span>也参与了技术细节的讨论，重点关注了大模型在<span class="annotated-text organization">电商客服场景</span>的应用。</p>
+                <div class="text-select-hint">💡 选中文本后点击右侧标签进行标注</div>
+              </div>
+            </div>
+            <div class="workbench-actions">
+              <button class="btn btn-danger" onclick="skipItem()">⏭️ 跳过 (S)</button>
+              <button class="btn btn-warning" onclick="reportDispute()">⚠️ 争议 (D)</button>
+              <button class="btn btn-success" onclick="submitAnnotation()">✅ 提交 (Enter)</button>
+            </div>
+          </div>
+          <div class="workbench-sidebar">
+            <div class="sidebar-section">
+              <div class="sidebar-section-header">🏷️ 实体标签</div>
+              <div class="sidebar-section-body">
+                <div class="label-item selected" onclick="selectLabel(this, 'person')">
+                  <div class="label-dot" style="background:#4080ff;"></div>
+                  <div class="label-info">
+                    <div class="label-name">人名 (PER)</div>
+                    <div class="label-shortcut">快捷键: 1</div>
+                  </div>
+                </div>
+                <div class="label-item" onclick="selectLabel(this, 'location')">
+                  <div class="label-dot" style="background:#00d976;"></div>
+                  <div class="label-info">
+                    <div class="label-name">地名 (LOC)</div>
+                    <div class="label-shortcut">快捷键: 2</div>
+                  </div>
+                </div>
+                <div class="label-item" onclick="selectLabel(this, 'organization')">
+                  <div class="label-dot" style="background:#ffa502;"></div>
+                  <div class="label-info">
+                    <div class="label-name">组织机构 (ORG)</div>
+                    <div class="label-shortcut">快捷键: 3</div>
+                  </div>
+                </div>
+                <div class="label-item" onclick="selectLabel(this, 'date')">
+                  <div class="label-dot" style="background:#a55eea;"></div>
+                  <div class="label-info">
+                    <div class="label-name">时间 (DATE)</div>
+                    <div class="label-shortcut">快捷键: 4</div>
+                  </div>
+                </div>
+              </div>
+            </div>
+            <div class="sidebar-section">
+              <div class="sidebar-section-header">📌 已标注实体</div>
+              <div class="sidebar-section-body" id="annotationList">
+                <div style="font-size:12px;color:#7b8cc8;padding:8px 0;">
+                  <div style="display:flex;justify-content:space-between;padding:4px 0;">
+                    <span><span style="display:inline-block;width:8px;height:8px;background:#4080ff;border-radius:2px;margin-right:6px;"></span>人名</span>
+                    <span style="color:#4080ff;">4个</span>
+                  </div>
+                  <div style="display:flex;justify-content:space-between;padding:4px 0;">
+                    <span><span style="display:inline-block;width:8px;height:8px;background:#00d976;border-radius:2px;margin-right:6px;"></span>地名</span>
+                    <span style="color:#00d976;">3个</span>
+                  </div>
+                  <div style="display:flex;justify-content:space-between;padding:4px 0;">
+                    <span><span style="display:inline-block;width:8px;height:8px;background:#ffa502;border-radius:2px;margin-right:6px;"></span>组织机构</span>
+                    <span style="color:#ffa502;">3个</span>
+                  </div>
+                  <div style="display:flex;justify-content:space-between;padding:4px 0;">
+                    <span><span style="display:inline-block;width:8px;height:8px;background:#a55eea;border-radius:2px;margin-right:6px;"></span>时间</span>
+                    <span style="color:#a55eea;">2个</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+            <div class="sidebar-section" style="flex:1;">
+              <div class="sidebar-section-header">⌨️ 快捷键</div>
+              <div class="workbench-shortcuts" style="border:none;">
+                <div class="shortcuts-list">
+                  <div class="shortcut-item"><span class="shortcut-key">1-4</span>选择标签</div>
+                  <div class="shortcut-item"><span class="shortcut-key">Enter</span>提交</div>
+                  <div class="shortcut-item"><span class="shortcut-key">S</span>跳过</div>
+                  <div class="shortcut-item"><span class="shortcut-key">D</span>争议</div>
+                  <div class="shortcut-item"><span class="shortcut-key">Ctrl+Z</span>撤销</div>
+                  <div class="shortcut-item"><span class="shortcut-key">←→</span>切换条目</div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="workbench" id="imageWorkbench" style="display:none;">
+          <div class="workbench-main">
+            <div class="workbench-toolbar">
+              <div style="display:flex;align-items:center;gap:12px;">
+                <span style="font-size:13px;color:#7b8cc8;">任务：</span>
+                <span style="font-size:13px;color:#e0e6ff;font-weight:500;">自动驾驶目标检测</span>
+                <span style="font-size:12px;color:#5a6a9e;">|</span>
+                <span style="font-size:13px;color:#7b8cc8;">进度：</span>
+                <span style="font-size:13px;color:#00d976;">89 / 200</span>
+              </div>
+              <div style="display:flex;gap:8px;">
+                <button class="btn btn-secondary btn-sm">⬜ 矩形框</button>
+                <button class="btn btn-secondary btn-sm">⭕ 圆形</button>
+                <button class="btn btn-secondary btn-sm">✏️ 多边形</button>
+              </div>
+            </div>
+            <div class="workbench-content">
+              <div class="image-canvas" id="imageCanvas">
+                <div class="image-placeholder">
+                  <div style="font-size:48px;margin-bottom:12px;">🖼️</div>
+                  <div>街景图片_001.jpg</div>
+                  <div style="font-size:12px;color:#5a6a9e;margin-top:4px;">1920 × 1080 · 模拟标注画布</div>
+                </div>
+                <div class="bbox person" style="left:15%;top:25%;width:12%;height:40%;">
+                  <span class="bbox-label">行人 0.95</span>
+                </div>
+                <div class="bbox person" style="left:5%;top:30%;width:8%;height:35%;">
+                  <span class="bbox-label">行人 0.88</span>
+                </div>
+                <div class="bbox car" style="left:35%;top:40%;width:30%;height:35%;">
+                  <span class="bbox-label">汽车 0.98</span>
+                </div>
+                <div class="bbox car" style="left:70%;top:35%;width:20%;height:25%;">
+                  <span class="bbox-label">汽车 0.92</span>
+                </div>
+                <div class="bbox traffic-light" style="left:85%;top:10%;width:5%;height:15%;">
+                  <span class="bbox-label">红绿灯 0.87</span>
+                </div>
+              </div>
+            </div>
+            <div class="workbench-actions">
+              <button class="btn btn-danger" onclick="skipItem()">⏭️ 跳过 (S)</button>
+              <button class="btn btn-warning" onclick="reportDispute()">⚠️ 争议 (D)</button>
+              <button class="btn btn-success" onclick="submitAnnotation()">✅ 提交 (Enter)</button>
+            </div>
+          </div>
+          <div class="workbench-sidebar">
+            <div class="sidebar-section">
+              <div class="sidebar-section-header">🎯 目标标签</div>
+              <div class="sidebar-section-body">
+                <div class="label-item selected" onclick="selectLabel(this, 'person')">
+                  <div class="label-dot" style="background:#4080ff;"></div>
+                  <div class="label-info">
+                    <div class="label-name">行人</div>
+                    <div class="label-shortcut">快捷键: 1</div>
+                  </div>
+                </div>
+                <div class="label-item" onclick="selectLabel(this, 'car')">
+                  <div class="label-dot" style="background:#00d976;"></div>
+                  <div class="label-info">
+                    <div class="label-name">汽车</div>
+                    <div class="label-shortcut">快捷键: 2</div>
+                  </div>
+                </div>
+                <div class="label-item" onclick="selectLabel(this, 'truck')">
+                  <div class="label-dot" style="background:#ffa502;"></div>
+                  <div class="label-info">
+                    <div class="label-name">卡车</div>
+                    <div class="label-shortcut">快捷键: 3</div>
+                  </div>
+                </div>
+                <div class="label-item" onclick="selectLabel(this, 'traffic-light')">
+                  <div class="label-dot" style="background:#a55eea;"></div>
+                  <div class="label-info">
+                    <div class="label-name">交通灯</div>
+                    <div class="label-shortcut">快捷键: 4</div>
+                  </div>
+                </div>
+                <div class="label-item" onclick="selectLabel(this, 'sign')">
+                  <div class="label-dot" style="background:#ff4757;"></div>
+                  <div class="label-info">
+                    <div class="label-name">交通标志</div>
+                    <div class="label-shortcut">快捷键: 5</div>
+                  </div>
+                </div>
+              </div>
+            </div>
+            <div class="sidebar-section">
+              <div class="sidebar-section-header">📋 已标注框</div>
+              <div class="sidebar-section-body">
+                <div style="font-size:12px;color:#c0cdf0;">
+                  <div style="display:flex;align-items:center;gap:8px;padding:6px 0;border-bottom:1px solid #1a2050;">
+                    <div style="width:12px;height:12px;background:#4080ff;border-radius:2px;"></div>
+                    <span style="flex:1;">行人 #1</span>
+                    <span style="color:#7b8cc8;">0.95</span>
+                  </div>
+                  <div style="display:flex;align-items:center;gap:8px;padding:6px 0;border-bottom:1px solid #1a2050;">
+                    <div style="width:12px;height:12px;background:#4080ff;border-radius:2px;"></div>
+                    <span style="flex:1;">行人 #2</span>
+                    <span style="color:#7b8cc8;">0.88</span>
+                  </div>
+                  <div style="display:flex;align-items:center;gap:8px;padding:6px 0;border-bottom:1px solid #1a2050;">
+                    <div style="width:12px;height:12px;background:#00d976;border-radius:2px;"></div>
+                    <span style="flex:1;">汽车 #1</span>
+                    <span style="color:#7b8cc8;">0.98</span>
+                  </div>
+                  <div style="display:flex;align-items:center;gap:8px;padding:6px 0;border-bottom:1px solid #1a2050;">
+                    <div style="width:12px;height:12px;background:#00d976;border-radius:2px;"></div>
+                    <span style="flex:1;">汽车 #2</span>
+                    <span style="color:#7b8cc8;">0.92</span>
+                  </div>
+                  <div style="display:flex;align-items:center;gap:8px;padding:6px 0;">
+                    <div style="width:12px;height:12px;background:#a55eea;border-radius:2px;"></div>
+                    <span style="flex:1;">红绿灯 #1</span>
+                    <span style="color:#7b8cc8;">0.87</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+            <div class="sidebar-section" style="flex:1;">
+              <div class="sidebar-section-header">⌨️ 快捷键</div>
+              <div class="workbench-shortcuts" style="border:none;">
+                <div class="shortcuts-list">
+                  <div class="shortcut-item"><span class="shortcut-key">R</span>矩形框</div>
+                  <div class="shortcut-item"><span class="shortcut-key">C</span>圆形</div>
+                  <div class="shortcut-item"><span class="shortcut-key">P</span>多边形</div>
+                  <div class="shortcut-item"><span class="shortcut-key">Del</span>删除框</div>
+                  <div class="shortcut-item"><span class="shortcut-key">Enter</span>提交</div>
+                  <div class="shortcut-item"><span class="shortcut-key">+-</span>缩放</div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="page" id="page-quality">
+        <div class="grid-3" style="margin-bottom:16px;">
+          <div class="panel" style="text-align:center;padding:24px;">
+            <div style="width:120px;height:120px;margin:0 auto 16px;" id="qualityScoreChart"></div>
+            <div style="font-size:18px;font-weight:700;color:#00d976;">92.5 分</div>
+            <div style="font-size:12px;color:#7b8cc8;margin-top:4px;">整体标注质量评分</div>
+          </div>
+          <div class="panel">
+            <div class="panel-header">
+              <div class="panel-title"><span class="dot"></span>质量问题分布</div>
+            </div>
+            <div class="panel-body">
+              <div id="qualityIssueChart" style="width:100%;height:200px;"></div>
+            </div>
+          </div>
+          <div class="panel">
+            <div class="panel-header">
+              <div class="panel-title"><span class="dot"></span>标注员质量排行</div>
+            </div>
+            <div class="panel-body" style="padding:10px 0;">
+              <div style="padding:10px 18px;display:flex;align-items:center;gap:10px;">
+                <span style="width:24px;height:24px;background:linear-gradient(135deg,#ffd700,#ffaa00);border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:700;color:#fff;">1</span>
+                <div class="avatar" style="background:linear-gradient(135deg,#4080ff,#6060ff);">李</div>
+                <span style="flex:1;font-size:13px;">李小明</span>
+                <span style="font-size:14px;font-weight:700;color:#00d976;">98.2</span>
+              </div>
+              <div style="padding:10px 18px;display:flex;align-items:center;gap:10px;">
+                <span style="width:24px;height:24px;background:linear-gradient(135deg,#c0c0c0,#a0a0a0);border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:700;color:#fff;">2</span>
+                <div class="avatar" style="background:linear-gradient(135deg,#00d976,#00b866);">王</div>
+                <span style="flex:1;font-size:13px;">王芳</span>
+                <span style="font-size:14px;font-weight:700;color:#00d976;">96.8</span>
+              </div>
+              <div style="padding:10px 18px;display:flex;align-items:center;gap:10px;">
+                <span style="width:24px;height:24px;background:linear-gradient(135deg,#cd7f32,#b06820);border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:700;color:#fff;">3</span>
+                <div class="avatar" style="background:linear-gradient(135deg,#ffa502,#e69500);">张</div>
+                <span style="flex:1;font-size:13px;">张伟</span>
+                <span style="font-size:14px;font-weight:700;color:#00d976;">95.5</span>
+              </div>
+              <div style="padding:10px 18px;display:flex;align-items:center;gap:10px;">
+                <span style="width:24px;height:24px;background:#1a2050;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:600;color:#7b8cc8;">4</span>
+                <div class="avatar" style="background:linear-gradient(135deg,#a55eea,#8854d0);">刘</div>
+                <span style="flex:1;font-size:13px;">刘婷</span>
+                <span style="font-size:14px;font-weight:700;color:#ffa502;">91.2</span>
+              </div>
+              <div style="padding:10px 18px;display:flex;align-items:center;gap:10px;">
+                <span style="width:24px;height:24px;background:#1a2050;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:600;color:#7b8cc8;">5</span>
+                <div class="avatar" style="background:linear-gradient(135deg,#ff4757,#e63e4c);">陈</div>
+                <span style="flex:1;font-size:13px;">陈浩</span>
+                <span style="font-size:14px;font-weight:700;color:#ffa502;">88.7</span>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="panel">
+          <div class="panel-header">
+            <div class="panel-title"><span class="dot"></span>抽检记录</div>
+            <div class="btn-group">
+              <button class="btn btn-primary btn-sm">开始抽检</button>
+            </div>
+          </div>
+          <div class="panel-body" style="padding:0;">
+            <table class="data-table">
+              <thead>
+                <tr>
+                  <th>抽检ID</th>
+                  <th>任务名称</th>
+                  <th>标注员</th>
+                  <th>抽检数量</th>
+                  <th>正确率</th>
+                  <th>问题类型</th>
+                  <th>抽检时间</th>
+                  <th>操作</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td>QC_001</td>
+                  <td>客服对话意图识别</td>
+                  <td>王芳</td>
+                  <td>100条</td>
+                  <td style="color:#00d976;">97%</td>
+                  <td><span class="status-tag status-success">优秀</span></td>
+                  <td>2024-01-15 14:30</td>
+                  <td><span class="action-link">详情</span><span class="action-link">打回修正</span></td>
+                </tr>
+                <tr>
+                  <td>QC_002</td>
+                  <td>自动驾驶目标检测</td>
+                  <td>陈浩</td>
+                  <td>100条</td>
+                  <td style="color:#ffa502;">85%</td>
+                  <td><span class="status-tag status-pending">漏标</span></td>
+                  <td>2024-01-15 13:45</td>
+                  <td><span class="action-link">详情</span><span class="action-link danger">打回修正</span></td>
+                </tr>
+                <tr>
+                  <td>QC_003</td>
+                  <td>新闻实体识别</td>
+                  <td>李小明</td>
+                  <td>100条</td>
+                  <td style="color:#00d976;">99%</td>
+                  <td><span class="status-tag status-success">优秀</span></td>
+                  <td>2024-01-15 12:00</td>
+                  <td><span class="action-link">详情</span></td>
+                </tr>
+                <tr>
+                  <td>QC_004</td>
+                  <td>商品图片分类</td>
+                  <td>张伟</td>
+                  <td>50条</td>
+                  <td style="color:#00d976;">94%</td>
+                  <td><span class="status-tag status-running">合格</span></td>
+                  <td>2024-01-15 10:15</td>
+                  <td><span class="action-link">详情</span></td>
+                </tr>
+                <tr>
+                  <td>QC_005</td>
+                  <td>医疗文本标注</td>
+                  <td>刘婷</td>
+                  <td>80条</td>
+                  <td style="color:#ff4757;">78%</td>
+                  <td><span class="status-tag status-error">错标较多</span></td>
+                  <td>2024-01-15 09:30</td>
+                  <td><span class="action-link">详情</span><span class="action-link danger">打回修正</span></td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+      <div class="page" id="page-collaboration">
+        <div class="grid-2-1">
+          <div>
+            <div class="panel">
+              <div class="panel-header">
+                <div class="panel-title"><span class="dot"></span>在线标注员 <span style="color:#00d976;font-size:12px;">(18人标注中)</span></div>
+              </div>
+              <div class="panel-body">
+                <div class="annotator-list" id="annotatorList"></div>
+              </div>
+            </div>
+          </div>
+          <div>
+            <div class="panel">
+              <div class="panel-header">
+                <div class="panel-title"><span class="dot"></span>实时协同动态</div>
+                <span class="badge badge-live" style="font-size:11px;">实时</span>
+              </div>
+              <div class="panel-body">
+                <div class="activity-feed" id="activityFeed"></div>
+              </div>
+            </div>
+            <div class="panel" style="margin-top:16px;">
+              <div class="panel-header">
+                <div class="panel-title"><span class="dot"></span>当前协作任务</div>
+              </div>
+              <div class="panel-body">
+                <div style="padding:14px;background:rgba(64,128,255,0.06);border-radius:10px;border:1px solid rgba(64,128,255,0.2);">
+                  <div style="font-size:14px;font-weight:600;color:#fff;margin-bottom:8px;">🤖 大模型训练语料标注</div>
+                  <div style="font-size:12px;color:#7b8cc8;margin-bottom:12px;">多模态混合标注 · 5人协作</div>
+                  <div style="display:flex;gap:8px;margin-bottom:12px;">
+                    <div class="avatar" style="width:24px;height:24px;font-size:10px;background:linear-gradient(135deg,#4080ff,#6060ff);">李</div>
+                    <div class="avatar" style="width:24px;height:24px;font-size:10px;background:linear-gradient(135deg,#00d976,#00b866);">王</div>
+                    <div class="avatar" style="width:24px;height:24px;font-size:10px;background:linear-gradient(135deg,#ffa502,#e69500);">张</div>
+                    <div class="avatar" style="width:24px;height:24px;font-size:10px;background:linear-gradient(135deg,#a55eea,#8854d0);">刘</div>
+                    <div class="avatar" style="width:24px;height:24px;font-size:10px;background:linear-gradient(135deg,#ff4757,#e63e4c);">陈</div>
+                  </div>
+                  <div style="margin-bottom:8px;">
+                    <div style="display:flex;justify-content:space-between;font-size:12px;margin-bottom:4px;">
+                      <span style="color:#7b8cc8;">整体进度</span>
+                      <span style="color:#7cacff;">68%</span>
+                    </div>
+                    <div style="height:8px;background:#1a2050;border-radius:4px;overflow:hidden;">
+                      <div style="width:68%;height:100%;background:linear-gradient(90deg,#4080ff,#7c5cff);border-radius:4px;"></div>
+                    </div>
+                  </div>
+                  <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-top:12px;">
+                    <div style="text-align:center;padding:8px;background:rgba(64,128,255,0.05);border-radius:6px;">
+                      <div style="font-size:16px;font-weight:700;color:#fff;">34,200</div>
+                      <div style="font-size:10px;color:#7b8cc8;">已标注</div>
+                    </div>
+                    <div style="text-align:center;padding:8px;background:rgba(255,165,2,0.05);border-radius:6px;">
+                      <div style="font-size:16px;font-weight:700;color:#ffa502;">15,800</div>
+                      <div style="font-size:10px;color:#7b8cc8;">待标注</div>
+                    </div>
+                    <div style="text-align:center;padding:8px;background:rgba(255,71,87,0.05);border-radius:6px;">
+                      <div style="font-size:16px;font-weight:700;color:#ff6b81;">23</div>
+                      <div style="font-size:10px;color:#7b8cc8;">争议项</div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="modal-overlay" id="assignModal">
+  <div class="modal">
+    <div class="modal-header">
+      <div class="modal-title">分配标注任务</div>
+      <button class="modal-close" onclick="closeModal('assignModal')">×</button>
+    </div>
+    <div class="modal-body">
+      <div class="form-group">
+        <label class="form-label">任务名称</label>
+        <input type="text" class="form-input" value="新闻命名实体识别 - 批次3" readonly>
+      </div>
+      <div class="form-row">
+        <div class="form-group">
+          <label class="form-label">分配数量</label>
+          <input type="number" class="form-input" value="500">
+        </div>
+        <div class="form-group">
+          <label class="form-label">截止日期</label>
+          <input type="date" class="form-input" value="2024-01-22">
+        </div>
+      </div>
+      <div class="form-group">
+        <label class="form-label">选择标注员</label>
+        <div class="assign-list" id="assignList"></div>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-secondary" onclick="closeModal('assignModal')">取消</button>
+      <button class="btn btn-primary" onclick="confirmAssign()">确认分配</button>
+    </div>
+  </div>
+</div>
+
+<div class="modal-overlay" id="uploadModal">
+  <div class="modal">
+    <div class="modal-header">
+      <div class="modal-title">上传数据文件</div>
+      <button class="modal-close" onclick="closeModal('uploadModal')">×</button>
+    </div>
+    <div class="modal-body">
+      <div class="upload-zone" style="padding:30px;">
+        <div class="upload-icon">📁</div>
+        <div class="upload-text">拖拽文件到此处或点击上传</div>
+        <div class="upload-hint">支持 CSV, JSON, TXT, JPG, PNG, MP4 格式</div>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-secondary" onclick="closeModal('uploadModal')">取消</button>
+      <button class="btn btn-primary">开始上传</button>
+    </div>
+  </div>
+</div>
+
+<div class="modal-overlay" id="importModal">
+  <div class="modal">
+    <div class="modal-header">
+      <div class="modal-title">导入数据源</div>
+      <button class="modal-close" onclick="closeModal('importModal')">×</button>
+    </div>
+    <div class="modal-body">
+      <div class="form-group">
+        <label class="form-label">导入方式</label>
+        <select class="form-select">
+          <option>API接口采集</option>
+          <option>数据库同步</option>
+          <option>网络爬虫</option>
+          <option>第三方数据平台</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label class="form-label">数据源地址</label>
+        <input type="text" class="form-input" placeholder="请输入URL或连接字符串">
+      </div>
+      <div class="form-row">
+        <div class="form-group">
+          <label class="form-label">认证方式</label>
+          <select class="form-select">
+            <option>无需认证</option>
+            <option>API Key</option>
+            <option>OAuth 2.0</option>
+            <option>账号密码</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label class="form-label">同步频率</label>
+          <select class="form-select">
+            <option>手动同步</option>
+            <option>每小时</option>
+            <option>每天</option>
+            <option>每周</option>
+          </select>
+        </div>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-secondary" onclick="closeModal('importModal')">取消</button>
+      <button class="btn btn-primary">测试连接并导入</button>
+    </div>
+  </div>
+</div>
+
+<div class="modal-overlay" id="createTaskModal">
+  <div class="modal">
+    <div class="modal-header">
+      <div class="modal-title">创建标注任务</div>
+      <button class="modal-close" onclick="closeModal('createTaskModal')">×</button>
+    </div>
+    <div class="modal-body">
+      <div class="form-group">
+        <label class="form-label">任务名称</label>
+        <input type="text" class="form-input" placeholder="请输入任务名称">
+      </div>
+      <div class="form-row">
+        <div class="form-group">
+          <label class="form-label">选择数据集</label>
+          <select class="form-select">
+            <option>客服对话语料_v2 (50,000条)</option>
+            <option>新闻资讯数据集 (120,000条)</option>
+            <option>街景图片集 (8,000张)</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label class="form-label">选择标签体系</label>
+          <select class="form-select">
+            <option>通用命名实体识别</option>
+            <option>对话意图分类</option>
+            <option>目标检测标签集</option>
+          </select>
+        </div>
+      </div>
+      <div class="form-group">
+        <label class="form-label">任务描述</label>
+        <textarea class="form-textarea" placeholder="请描述标注任务要求和注意事项..."></textarea>
+      </div>
+      <div class="form-row">
+        <div class="form-group">
+          <label class="form-label">标注类型</label>
+          <select class="form-select">
+            <option>文本标注</option>
+            <option>图片标注</option>
+            <option>视频标注</option>
+            <option>音频标注</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label class="form-label">优先级</label>
+          <select class="form-select">
+            <option>普通</option>
+            <option>重要</option>
+            <option>紧急</option>
+          </select>
+        </div>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-secondary" onclick="closeModal('createTaskModal')">取消</button>
+      <button class="btn btn-primary" onclick="closeModal('createTaskModal')">创建任务</button>
+    </div>
+  </div>
+</div>
+
+<script>
+const mockData = {
+  sources: [
+    { name: '电商平台API', type: 'API采集', status: 'running', lastSync: '2分钟前', count: '125,430' },
+    { name: '客服系统数据库', type: '数据库同步', status: 'success', lastSync: '15分钟前', count: '89,200' },
+    { name: '新闻网站爬虫', type: '网络爬虫', status: 'running', lastSync: '5分钟前', count: '45,800' },
+    { name: '第三方数据平台', type: 'API采集', status: 'paused', lastSync: '2小时前', count: '230,000' },
+    { name: '用户反馈CSV', type: '文件上传', status: 'success', lastSync: '1天前', count: '12,500' },
+    { name: '社交媒体API', type: 'API采集', status: 'error', lastSync: '30分钟前', count: '67,200' },
+  ],
+  datasets: [
+    { name: '客服对话语料_v2', type: 'text', typeIcon: '📝', count: '50,000', status: 'ready', quality: 94, qualityLevel: 'high', annotated: '32,500' },
+    { name: '街景图片数据集', type: 'image', typeIcon: '🖼️', count: '8,200', status: 'annotating', quality: 87, qualityLevel: 'high', annotated: '5,600' },
+    { name: '产品评论情感', type: 'text', typeIcon: '📝', count: '120,000', status: 'ready', quality: 91, qualityLevel: 'high', annotated: '120,000' },
+    { name: '监控视频片段', type: 'video', typeIcon: '🎬', count: '2,400', status: 'cleaning', quality: 76, qualityLevel: 'medium', annotated: '890' },
+    { name: '销售数据表格', type: 'table', typeIcon: '📊', count: '35,000', status: 'ready', quality: 98, qualityLevel: 'high', annotated: '35,000' },
+    { name: '医疗影像数据', type: 'image', typeIcon: '🖼️', count: '15,600', status: 'annotating', quality: 82, qualityLevel: 'medium', annotated: '9,800' },
+  ],
+  tasks: [
+    { name: '客服对话意图识别', dataset: '客服对话语料_v2', labels: '意图分类', status: 'running', progress: 68, annotators: 5, quality: 93 },
+    { name: '新闻命名实体识别', dataset: '新闻资讯数据集', labels: 'NER实体', status: 'running', progress: 45, annotators: 8, quality: 89 },
+    { name: '自动驾驶目标检测', dataset: '街景图片数据集', labels: '目标检测', status: 'running', progress: 82, annotators: 4, quality: 95 },
+    { name: '商品评论情感分析', dataset: '产品评论情感', labels: '情感分类', status: 'completed', progress: 100, annotators: 6, quality: 96 },
+    { name: '视频行为识别', dataset: '监控视频片段', labels: '行为标签', status: 'pending', progress: 0, annotators: 0, quality: 0 },
+    { name: '医疗影像标注', dataset: '医疗影像数据', labels: '病灶检测', status: 'running', progress: 35, annotators: 3, quality: 88 },
+  ],
+  annotators: [
+    { name: '李小明', avatar: '李', color: 'linear-gradient(135deg,#4080ff,#6060ff)', status: 'online', task: '客服对话意图识别', speed: '42条/时', today: 286 },
+    { name: '王芳', avatar: '王', color: 'linear-gradient(135deg,#00d976,#00b866)', status: 'online', task: '新闻命名实体识别', speed: '38条/时', today: 252 },
+    { name: '张伟', avatar: '张', color: 'linear-gradient(135deg,#ffa502,#e69500)', status: 'busy', task: '自动驾驶目标检测', speed: '28张/时', today: 198 },
+    { name: '刘婷', avatar: '刘', color: 'linear-gradient(135deg,#a55eea,#8854d0)', status: 'online', task: '医疗影像标注', speed: '15张/时', today: 105 },
+    { name: '陈浩', avatar: '陈', color: 'linear-gradient(135deg,#ff4757,#e63e4c)', status: 'online', task: '商品评论情感分析', speed: '55条/时', today: 385 },
+    { name: '赵丽', avatar: '赵', color: 'linear-gradient(135deg,#26de81,#20bf6b)', status: 'away', task: '客服对话意图识别', speed: '--', today: 178 },
+    { name: '孙强', avatar: '孙', color: 'linear-gradient(135deg,#fd79a8,#e84393)', status: 'online', task: '新闻命名实体识别', speed: '45条/时', today: 312 },
+    { name: '周洁', avatar: '周', color: 'linear-gradient(135deg,#45aaf2,#2d98da)', status: 'busy', task: '视频行为识别', speed: '8条/时', today: 56 },
+  ],
+  activities: [
+    { user: '李小明', avatar: '李', color: '#4080ff', action: '完成了', target: '客服对话语料 #1256-#1300', time: '1分钟前' },
+    { user: '王芳', avatar: '王', color: '#00d976', action: '提交了争议', target: '新闻实体"阿里巴巴"标注', time: '3分钟前' },
+    { user: '张伟', avatar: '张', color: '#ffa502', action: '开始标注', target: '街景图片 #801-#850', time: '5分钟前' },
+    { user: '陈浩', avatar: '陈', color: '#ff4757', action: '完成了', target: '商品评论情感 #500', time: '8分钟前' },
+    { user: '系统', avatar: 'S', color: '#a55eea', action: '自动分配任务给', target: '刘婷、孙强', time: '12分钟前' },
+    { user: '刘婷', avatar: '刘', color: '#a55eea', action: '提交了', target: '医疗影像 #230 标注结果', time: '15分钟前' },
+    { user: '赵丽', avatar: '赵', color: '#26de81', action: '暂停标注', target: '休息中', time: '20分钟前' },
+    { user: '孙强', avatar: '孙', color: '#fd79a8', action: '完成了', target: '新闻实体 #800', time: '25分钟前' },
+  ],
+  tagTree: [
+    { name: '人物实体', color: '#4080ff', children: [
+      { name: '人名', color: '#4080ff', count: 1250 },
+      { name: '职称头衔', color: '#5a9aff', count: 340 },
+      { name: '代称', color: '#74aaff', count: 890 },
+    ]},
+    { name: '地理位置', color: '#00d976', children: [
+      { name: '国家地区', color: '#00d976', count: 560 },
+      { name: '城市街道', color: '#20e896', count: 1200 },
+      { name: '地标建筑', color: '#40f0b6', count: 230 },
+    ]},
+    { name: '组织机构', color: '#ffa502', children: [
+      { name: '公司企业', color: '#ffa502', count: 780 },
+      { name: '政府机构', color: '#ffb532', count: 340 },
+      { name: '教育机构', color: '#ffc562', count: 180 },
+    ]},
+    { name: '时间表达', color: '#a55eea', children: [
+      { name: '具体日期', color: '#a55eea', count: 890 },
+      { name: '时间点', color: '#b56efa', count: 450 },
+      { name: '时间段', color: '#c57efa', count: 320 },
+    ]},
+  ]
+};
+
+let charts = {};
+
+function toggleSidebar() {
+  const sidebar = document.getElementById('sidebar');
+  const icon = document.getElementById('toggleIcon');
+  sidebar.classList.toggle('collapsed');
+  icon.textContent = sidebar.classList.contains('collapsed') ? '▶' : '◀';
+  setTimeout(() => {
+    Object.values(charts).forEach(chart => chart && chart.resize());
+  }, 300);
+}
+
+function switchPage(pageId) {
+  document.querySelectorAll('.nav-item').forEach(item => {
+    item.classList.toggle('active', item.dataset.page === pageId);
+  });
+  document.querySelectorAll('.page').forEach(page => {
+    page.classList.toggle('active', page.id === 'page-' + pageId);
+  });
+  setTimeout(() => {
+    initChartsForPage(pageId);
+  }, 100);
+}
+
+function initChartsForPage(pageId) {
+  if (pageId === 'collection') {
+    initCollectionChart();
+    initSourceTypeChart();
+  } else if (pageId === 'tasks') {
+    initTaskStatusChart();
+    initGanttChart();
+  } else if (pageId === 'quality') {
+    initQualityCharts();
+  }
+}
+
+function initCollectionChart() {
+  if (charts.collection) return;
+  const dom = document.getElementById('collectionChart');
+  if (!dom) return;
+  charts.collection = echarts.init(dom);
+  const option = {
+    backgroundColor: 'transparent',
+    tooltip: { trigger: 'axis', backgroundColor: '#1a2050', borderColor: '#2a3080', textStyle: { color: '#e0e6ff' } },
+    legend: { data: ['文件上传', 'API采集', '爬虫', '数据库同步'], textStyle: { color: '#8b9cd0' }, top: 0 },
+    grid: { left: '3%', right: '4%', bottom: '3%', top: '40px', containLabel: true },
+    xAxis: { type: 'category', data: ['周一', '周二', '周三', '周四', '周五', '周六', '周日'], axisLine: { lineStyle: { color: '#2a3080' } }, axisLabel: { color: '#7b8cc8' } },
+    yAxis: { type: 'value', axisLine: { lineStyle: { color: '#2a3080' } }, axisLabel: { color: '#7b8cc8' }, splitLine: { lineStyle: { color: '#1a2050' } } },
+    series: [
+      { name: '文件上传', type: 'line', smooth: true, data: [2340, 1890, 3200, 2780, 3500, 1200, 1450], itemStyle: { color: '#4080ff' }, areaStyle: { color: new echarts.graphic.LinearGradient(0, 0, 0, 1, [{ offset: 0, color: 'rgba(64,128,255,0.3)' }, { offset: 1, color: 'rgba(64,128,255,0.05)' }]) } },
+      { name: 'API采集', type: 'line', smooth: true, data: [5600, 6200, 5800, 6800, 7200, 4500, 4800], itemStyle: { color: '#00d976' }, areaStyle: { color: new echarts.graphic.LinearGradient(0, 0, 0, 1, [{ offset: 0, color: 'rgba(0,217,118,0.3)' }, { offset: 1, color: 'rgba(0,217,118,0.05)' }]) } },
+      { name: '爬虫', type: 'line', smooth: true, data: [3200, 2800, 3500, 3100, 3800, 2200, 2400], itemStyle: { color: '#ffa502' }, areaStyle: { color: new echarts.graphic.LinearGradient(0, 0, 0, 1, [{ offset: 0, color: 'rgba(255,165,2,0.3)' }, { offset: 1, color: 'rgba(255,165,2,0.05)' }]) } },
+      { name: '数据库同步', type: 'line', smooth: true, data: [4100, 4500, 4200, 4800, 5200, 3800, 3808], itemStyle: { color: '#a55eea' }, areaStyle: { color: new echarts.graphic.LinearGradient(0, 0, 0, 1, [{ offset: 0, color: 'rgba(165,94,234,0.3)' }, { offset: 1, color: 'rgba(165,94,234,0.05)' }]) } },
+    ]
+  };
+  charts.collection.setOption(option);
+}
+
+function initSourceTypeChart() {
+  if (charts.sourceType) return;
+  const dom = document.getElementById('sourceTypeChart');
+  if (!dom) return;
+  charts.sourceType = echarts.init(dom);
+  const option = {
+    backgroundColor: 'transparent',
+    tooltip: { trigger: 'item', backgroundColor: '#1a2050', borderColor: '#2a3080', textStyle: { color: '#e0e6ff' } },
+    legend: { orient: 'vertical', right: 10, top: 'center', textStyle: { color: '#8b9cd0' }, itemWidth: 12, itemHeight: 12 },
+    series: [{
+      type: 'pie', radius: ['45%', '70%'], center: ['35%', '50%'],
+      avoidLabelOverlap: false,
+      itemStyle: { borderRadius: 6, borderColor: '#0f1640', borderWidth: 2 },
+      label: { show: false },
+      data: [
+        { value: 285000, name: 'API采集', itemStyle: { color: '#4080ff' } },
+        { value: 189000, name: '数据库同步', itemStyle: { color: '#00d976' } },
+        { value: 125000, name: '文件上传', itemStyle: { color: '#ffa502' } },
+        { value: 78000, name: '网络爬虫', itemStyle: { color: '#a55eea' } },
+      ]
+    }]
+  };
+  charts.sourceType.setOption(option);
+}
+
+function initTaskStatusChart() {
+  if (charts.taskStatus) return;
+  const dom = document.getElementById('taskStatusChart');
+  if (!dom) return;
+  charts.taskStatus = echarts.init(dom);
+  const option = {
+    backgroundColor: 'transparent',
+    tooltip: { trigger: 'item', backgroundColor: '#1a2050', borderColor: '#2a3080', textStyle: { color: '#e0e6ff' } },
+    series: [{
+      type: 'pie', radius: ['40%', '70%'],
+      itemStyle: { borderRadius: 8, borderColor: '#0f1640', borderWidth: 2 },
+      label: { color: '#c0cdf0', formatter: '{b}\n{d}%' },
+      data: [
+        { value: 22, name: '进行中', itemStyle: { color: '#4080ff' } },
+        { value: 8, name: '已完成', itemStyle: { color: '#00d976' } },
+        { value: 4, name: '待分配', itemStyle: { color: '#ffa502' } },
+        { value: 2, name: '已暂停', itemStyle: { color: '#8b9cd0' } },
+      ]
+    }]
+  };
+  charts.taskStatus.setOption(option);
+}
+
+function initGanttChart() {
+  if (charts.gantt) return;
+  const dom = document.getElementById('ganttChart');
+  if (!dom) return;
+  charts.gantt = echarts.init(dom);
+  const tasks = ['意图识别', '实体识别', '目标检测', '情感分析', '影像标注'];
+  const startDates = [0, 2, 1, 5, 3];
+  const durations = [7, 10, 14, 5, 12];
+  const progresses = [68, 45, 82, 100, 35];
+  const colors = ['#4080ff', '#00d976', '#ffa502', '#a55eea', '#ff4757'];
+  const option = {
+    backgroundColor: 'transparent',
+    tooltip: { backgroundColor: '#1a2050', borderColor: '#2a3080', textStyle: { color: '#e0e6ff' } },
+    grid: { left: '3%', right: '4%', bottom: '3%', top: '10px', containLabel: true },
+    xAxis: { type: 'value', max: 14, axisLine: { lineStyle: { color: '#2a3080' } }, axisLabel: { color: '#7b8cc8', formatter: '第{c}天' }, splitLine: { lineStyle: { color: '#1a2050' } } },
+    yAxis: { type: 'category', data: tasks.reverse(), axisLine: { lineStyle: { color: '#2a3080' } }, axisLabel: { color: '#7b8cc8' } },
+    series: [
+      {
+        type: 'bar', stack: 'total', silent: true, itemStyle: { color: 'transparent' },
+        data: startDates.reverse()
+      },
+      {
+        type: 'bar', stack: 'total',
+        data: durations.reverse().map((d, i) => ({
+          value: d,
+          itemStyle: { color: colors[tasks.length - 1 - i], borderRadius: [4, 4, 4, 4], opacity: 0.3 }
+        })),
+        barWidth: 20
+      },
+      {
+        type: 'bar', stack: 'total',
+        data: durations.map((d, i) => d * progresses[tasks.length - 1 - i] / 100).reverse(),
+        itemStyle: { color: function(params) { return colors[tasks.length - 1 - params.dataIndex]; }, borderRadius: [4, 0, 0, 4] },
+        barWidth: 20, barGap: '-100%'
+      }
+    ]
+  };
+  charts.gantt.setOption(option);
+}
+
+function initQualityCharts() {
+  if (charts.qualityScore) {
+    charts.qualityScore.resize();
+    charts.qualityIssue.resize();
+    return;
+  }
+  const scoreDom = document.getElementById('qualityScoreChart');
+  if (scoreDom) {
+    charts.qualityScore = echarts.init(scoreDom);
+    charts.qualityScore.setOption({
+      backgroundColor: 'transparent',
+      series: [{
+        type: 'gauge', startAngle: 90, endAngle: -270, pointer: { show: false },
+        progress: { show: true, overlap: false, roundCap: true, clip: false, itemStyle: { color: '#00d976' } },
+        axisLine: { lineStyle: { width: 12, color: [[1, '#1a2050']] } },
+        splitLine: { show: false }, axisTick: { show: false }, axisLabel: { show: false },
+        data: [{ value: 92.5, detail: { show: false } }],
+        detail: { show: false }
+      }]
+    });
+  }
+  const issueDom = document.getElementById('qualityIssueChart');
+  if (issueDom) {
+    charts.qualityIssue = echarts.init(issueDom);
+    charts.qualityIssue.setOption({
+      backgroundColor: 'transparent',
+      tooltip: { backgroundColor: '#1a2050', borderColor: '#2a3080', textStyle: { color: '#e0e6ff' } },
+      grid: { left: '3%', right: '10%', bottom: '3%', top: '5%', containLabel: true },
+      xAxis: { type: 'value', axisLine: { lineStyle: { color: '#2a3080' } }, axisLabel: { color: '#7b8cc8' }, splitLine: { lineStyle: { color: '#1a2050' } } },
+      yAxis: { type: 'category', data: ['标注不一致', '漏标', '错标', '边界不准', '标签误用'], axisLine: { lineStyle: { color: '#2a3080' } }, axisLabel: { color: '#7b8cc8' } },
+      series: [{
+        type: 'bar', data: [12, 18, 8, 25, 6],
+        itemStyle: { color: new echarts.graphic.LinearGradient(0, 0, 1, 0, [{ offset: 0, color: '#ff4757' }, { offset: 1, color: '#ffa502' }]), borderRadius: [0, 4, 4, 0] },
+        barWidth: 16
+      }]
+    });
+  }
+}
+
+function refreshCollectionChart() {
+  if (charts.collection) {
+    charts.collection.showLoading({ textColor: '#7cacff', maskColor: 'rgba(0,0,0,0.2)' });
+    setTimeout(() => charts.collection.hideLoading(), 800);
+  }
+}
+
+function renderSourceTable() {
+  const tbody = document.getElementById('sourceTableBody');
+  const statusMap = { running: 'status-running', success: 'status-success', paused: 'status-paused', error: 'status-error' };
+  const statusText = { running: '采集中', success: '正常', paused: '已暂停', error: '异常' };
+  tbody.innerHTML = mockData.sources.map(s => `
+    <tr>
+      <td style="font-weight:500;color:#e0e6ff;">${s.name}</td>
+      <td><span style="color:#7b8cc8;">${s.type}</span></td>
+      <td><span class="status-tag ${statusMap[s.status]}">${statusText[s.status]}</span></td>
+      <td style="color:#7b8cc8;">${s.lastSync}</td>
+      <td style="color:#7cacff;font-variant-numeric:tabular-nums;">${s.count}</td>
+      <td>
+        <span class="action-link">配置</span>
+        <span class="action-link">同步</span>
+        <span class="action-link">查看数据</span>
+        <span class="action-link danger">删除</span>
+      </td>
+    </tr>
+  `).join('');
+}
+
+function renderDatasetGrid() {
+  const grid = document.getElementById('datasetGrid');
+  grid.innerHTML = mockData.datasets.map(d => `
+    <div class="dataset-card">
+      <div class="dataset-type-icon ${d.type}">${d.typeIcon}</div>
+      <div class="dataset-name">${d.name}</div>
+      <div class="dataset-meta">${d.count} 条 · ${Math.round(d.annotated.replace(/,/g,'')/d.count.replace(/,/g,'')*100)}% 已标注</div>
+      <div class="dataset-stats">
+        <div class="dataset-stat">
+          <div class="dataset-stat-value">${d.count}</div>
+          <div class="dataset-stat-label">总条数</div>
+        </div>
+        <div class="dataset-stat">
+          <div class="dataset-stat-value" style="color:#00d976;">${d.annotated}</div>
+          <div class="dataset-stat-label">已标注</div>
+        </div>
+        <div class="dataset-stat">
+          <div class="dataset-stat-value" style="color:#ffa502;">${d.quality}分</div>
+          <div class="dataset-stat-label">质量分</div>
+        </div>
+      </div>
+      <div class="dataset-quality">
+        <div class="quality-bar"><div class="quality-fill ${d.qualityLevel}" style="width:${d.quality}%"></div></div>
+        <div class="quality-score" style="color:${d.quality>=90?'#00d976':d.quality>=80?'#ffa502':'#ff4757'};">${d.quality}</div>
+      </div>
+      <div class="dataset-actions">
+        <button class="btn btn-secondary btn-sm">预览</button>
+        <button class="btn btn-secondary btn-sm">清洗</button>
+        <button class="btn btn-primary btn-sm">标注</button>
+      </div>
+    </div>
+  `).join('');
+}
+
+function renderTaskTable() {
+  const tbody = document.getElementById('taskTableBody');
+  const statusMap = { running: 'status-running', completed: 'status-success', pending: 'status-pending', paused: 'status-paused' };
+  const statusText = { running: '进行中', completed: '已完成', pending: '待分配', paused: '已暂停' };
+  tbody.innerHTML = mockData.tasks.map(t => `
+    <tr>
+      <td style="font-weight:500;color:#e0e6ff;">${t.name}</td>
+      <td style="color:#7b8cc8;">${t.dataset}</td>
+      <td style="color:#7b8cc8;">${t.labels}</td>
+      <td><span class="status-tag ${statusMap[t.status]}">${statusText[t.status]}</span></td>
+      <td style="min-width:120px;">
+        <div style="display:flex;align-items:center;gap:8px;">
+          <div style="flex:1;height:6px;background:#1a2050;border-radius:3px;overflow:hidden;">
+            <div style="width:${t.progress}%;height:100%;background:linear-gradient(90deg,#4080ff,#7c5cff);border-radius:3px;"></div>
+          </div>
+          <span style="font-size:12px;color:${t.progress===100?'#00d976':'#7cacff'};min-width:35px;">${t.progress}%</span>
+        </div>
+      </td>
+      <td style="color:#7b8cc8;">${t.annotators}人</td>
+      <td style="color:${t.quality>=90?'#00d976':t.quality>=80?'#ffa502':'#ff4757'};font-weight:600;">${t.quality > 0 ? t.quality + '分' : '-'}</td>
+      <td>
+        <span class="action-link" onclick="showAssignModal()">分配</span>
+        <span class="action-link">详情</span>
+        <span class="action-link danger">暂停</span>
+      </td>
+    </tr>
+  `).join('');
+}
+
+function renderAnnotatorList() {
+  const list = document.getElementById('annotatorList');
+  list.innerHTML = mockData.annotators.map(a => `
+    <div class="annotator-item">
+      <div class="annotator-avatar ${a.status}" style="background:${a.color};">${a.avatar}</div>
+      <div class="annotator-info">
+        <div class="annotator-name">${a.name}</div>
+        <div class="annotator-task">${a.task}</div>
+      </div>
+      <div class="annotator-stats">
+        <div class="annotator-stat">
+          <div class="annotator-stat-value">${a.speed}</div>
+          <div class="annotator-stat-label">速度</div>
+        </div>
+        <div class="annotator-stat">
+          <div class="annotator-stat-value">${a.today}</div>
+          <div class="annotator-stat-label">今日</div>
+        </div>
+      </div>
+    </div>
+  `).join('');
+}
+
+function renderActivityFeed() {
+  const feed = document.getElementById('activityFeed');
+  feed.innerHTML = mockData.activities.map(a => `
+    <div class="activity-item">
+      <div class="activity-avatar" style="background:${a.color};">${a.avatar}</div>
+      <div class="activity-content">
+        <div class="activity-text"><span class="highlight">${a.user}</span> ${a.action} <span class="highlight">${a.target}</span></div>
+        <div class="activity-time">${a.time}</div>
+      </div>
+    </div>
+  `).join('');
+}
+
+function renderTagTree() {
+  const container = document.getElementById('tagTree');
+  function renderNode(node, level = 0) {
+    const hasChildren = node.children && node.children.length > 0;
+    let html = `
+      <div class="tag-node">
+        <div class="tag-node-header" onclick="${hasChildren ? `toggleTagNode(this)` : ''}">
+          <span class="tag-toggle ${level === 0 ? 'expanded' : ''}">${hasChildren ? '▶' : ''}</span>
+          <span class="tag-color" style="background:${node.color};"></span>
+          <span class="tag-name">${node.name}</span>
+          ${node.count ? `<span class="tag-count">${node.count}</span>` : ''}
+          <div class="tag-actions">
+            <button class="tag-action-btn" title="添加子标签">+</button>
+            <button class="tag-action-btn" title="编辑">✏️</button>
+            <button class="tag-action-btn" title="删除">🗑️</button>
+          </div>
+        </div>
+        ${hasChildren ? `<div class="tag-children ${level === 0 ? 'expanded' : ''}">${node.children.map(c => renderNode(c, level + 1)).join('')}</div>` : ''}
+      </div>
+    `;
+    return html;
+  }
+  container.innerHTML = mockData.tagTree.map(n => renderNode(n)).join('');
+}
+
+function toggleTagNode(header) {
+  const toggle = header.querySelector('.tag-toggle');
+  const children = header.nextElementSibling;
+  if (children) {
+    toggle.classList.toggle('expanded');
+    children.classList.toggle('expanded');
+  }
+}
+
+function renderAssignList() {
+  const list = document.getElementById('assignList');
+  list.innerHTML = mockData.annotators.filter(a => a.status !== 'away').map((a, i) => `
+    <div class="assign-item ${i < 2 ? 'selected' : ''}" onclick="this.classList.toggle('selected')">
+      <div class="assign-checkbox">${i < 2 ? '✓' : ''}</div>
+      <div class="annotator-avatar ${a.status}" style="background:${a.color};width:28px;height:28px;font-size:11px;">${a.avatar}</div>
+      <span style="flex:1;font-size:13px;color:#c0cdf0;">${a.name}</span>
+      <span style="font-size:11px;color:#7b8cc8;">今日 ${a.today} 条</span>
+    </div>
+  `).join('');
+}
+
+function switchTagGroup(el, type) {
+  el.parentElement.querySelectorAll('.tag-tab').forEach(t => t.classList.remove('active'));
+  el.classList.add('active');
+}
+
+function switchAnnotationMode(el, mode) {
+  el.parentElement.querySelectorAll('.content-tab').forEach(t => t.classList.remove('active'));
+  el.classList.add('active');
+  document.getElementById('textWorkbench').style.display = mode === 'text' ? 'grid' : 'none';
+  document.getElementById('imageWorkbench').style.display = mode === 'image' ? 'grid' : 'none';
+}
+
+function selectLabel(el, type) {
+  el.closest('.sidebar-section-body').querySelectorAll('.label-item').forEach(i => i.classList.remove('selected'));
+  el.classList.add('selected');
+}
+
+function showModal(id) {
+  document.getElementById(id).classList.add('show');
+  if (id === 'assignModal') renderAssignList();
+}
+
+function closeModal(id) {
+  document.getElementById(id).classList.remove('show');
+}
+
+function showAssignModal() { showModal('assignModal'); }
+function showUploadModal() { showModal('uploadModal'); }
+function showImportModal() { showModal('importModal'); }
+function showCreateTaskModal() { showModal('createTaskModal'); }
+function showAddSourceModal() { showImportModal(); }
+function showCreateDatasetModal() { showUploadModal(); }
+
+function confirmAssign() {
+  alert('任务已分配给选中的标注员！');
+  closeModal('assignModal');
+}
+
+function submitAnnotation() {
+  alert('标注已提交！进入下一条...');
+}
+
+function skipItem() {
+  alert('已跳过当前条目');
+}
+
+function reportDispute() {
+  alert('已提交争议，请等待审核');
+}
+
+function addRootTag() {
+  const name = prompt('请输入根标签名称：');
+  if (name) {
+    mockData.tagTree.push({ name, color: '#45aaf2', children: [] });
+    renderTagTree();
+  }
+}
+
+function handleFileUpload(files) {
+  if (files.length > 0) {
+    alert(`已选择 ${files.length} 个文件，准备上传...`);
+  }
+}
+
+const uploadZone = document.getElementById('uploadZone');
+if (uploadZone) {
+  uploadZone.addEventListener('dragover', (e) => {
+    e.preventDefault();
+    uploadZone.classList.add('dragover');
+  });
+  uploadZone.addEventListener('dragleave', () => {
+    uploadZone.classList.remove('dragover');
+  });
+  uploadZone.addEventListener('drop', (e) => {
+    e.preventDefault();
+    uploadZone.classList.remove('dragover');
+    handleFileUpload(e.dataTransfer.files);
+  });
+}
+
+window.addEventListener('resize', () => {
+  Object.values(charts).forEach(chart => chart && chart.resize());
+});
+
+function init() {
+  renderSourceTable();
+  renderDatasetGrid();
+  renderTaskTable();
+  renderAnnotatorList();
+  renderActivityFeed();
+  renderTagTree();
+  setTimeout(() => initChartsForPage('collection'), 200);
+}
+
+document.addEventListener('DOMContentLoaded', init);
+</script>
+<script src="/module-interactions.js"></script>
+</body>
+</html>
