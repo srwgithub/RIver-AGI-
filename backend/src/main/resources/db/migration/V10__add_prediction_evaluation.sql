@@ -1,0 +1,20 @@
+CREATE TABLE IF NOT EXISTS prediction_evaluation (
+    id BIGINT AUTO_INCREMENT PRIMARY KEY,
+    tenant_id BIGINT DEFAULT 1,
+    task_id BIGINT NOT NULL,
+    model_version_id BIGINT,
+    evaluation_type VARCHAR(40) NOT NULL,
+    algorithm VARCHAR(60),
+    mae DOUBLE,
+    rmse DOUBLE,
+    mape DOUBLE,
+    r2 DOUBLE,
+    bias_percentage DOUBLE,
+    accuracy_score DOUBLE,
+    status VARCHAR(30) DEFAULT 'PASSED',
+    recommendation VARCHAR(500),
+    parameters_json TEXT,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    INDEX idx_prediction_evaluation_task (task_id, created_at),
+    INDEX idx_prediction_evaluation_model (model_version_id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;

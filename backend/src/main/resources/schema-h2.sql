@@ -97,6 +97,7 @@ CREATE TABLE IF NOT EXISTS analysis_task (
     dataset_id BIGINT NOT NULL,
     task_type VARCHAR(50),
     status VARCHAR(20) DEFAULT 'PENDING',
+    error_message TEXT,
     result_json TEXT,
     tenant_id BIGINT DEFAULT 1,
     deleted INT DEFAULT 0,
@@ -184,6 +185,7 @@ CREATE TABLE IF NOT EXISTS prediction_task (
     time_field VARCHAR(200),
     model_type VARCHAR(50),
     status VARCHAR(20) DEFAULT 'PENDING',
+    error_message TEXT,
     parameters_json TEXT,
     forecast_days INT DEFAULT 30,
     confidence_level VARCHAR(20) DEFAULT '0.95',
@@ -332,6 +334,45 @@ CREATE TABLE IF NOT EXISTS async_task (
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     deleted INT DEFAULT 0
+);
+
+CREATE TABLE IF NOT EXISTS performance_sample (
+    id BIGINT AUTO_INCREMENT PRIMARY KEY,
+    tenant_id BIGINT DEFAULT 1,
+    prediction_task_id BIGINT,
+    model_version_id BIGINT,
+    sample_type VARCHAR(30) NOT NULL,
+    duration_ms BIGINT,
+    latency_ms DOUBLE,
+    throughput_qps DOUBLE,
+    cpu_percent DOUBLE,
+    memory_percent DOUBLE,
+    gpu_percent DOUBLE,
+    storage_io_percent DOUBLE,
+    status VARCHAR(20) DEFAULT 'SUCCESS',
+    error_code VARCHAR(100),
+    details_json TEXT,
+    sampled_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS runtime_alert (
+    id BIGINT AUTO_INCREMENT PRIMARY KEY,
+    tenant_id BIGINT DEFAULT 1,
+    prediction_task_id BIGINT,
+    sample_id BIGINT,
+    alert_type VARCHAR(40) NOT NULL,
+    severity VARCHAR(20) NOT NULL,
+    title VARCHAR(200) NOT NULL,
+    description VARCHAR(1000),
+    status VARCHAR(20) DEFAULT 'OPEN',
+    threshold_json TEXT,
+    detected_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    resolved_at TIMESTAMP NULL,
+    resolved_by BIGINT,
+    resolution VARCHAR(500),
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
 CREATE TABLE IF NOT EXISTS report (
@@ -600,3 +641,15 @@ CREATE TABLE IF NOT EXISTS decision_scenario (
 INSERT INTO dashboard (name, description, category, is_default, is_public, tenant_id, created_at, updated_at)
 SELECT '市场趋势分析看板', '综合趋势预测、对比分析、异常检测、根因分析的多维度可视化看板', 'TREND', 1, 1, 1, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP
 WHERE NOT EXISTS (SELECT 1 FROM dashboard WHERE name = '市场趋势分析看板');
+
+CREATE TABLE IF NOT EXISTS system_config (
+    id BIGINT AUTO_INCREMENT PRIMARY KEY,
+    tenant_id BIGINT NOT NULL DEFAULT 1,
+    namespace VARCHAR(100) NOT NULL,
+    config_json CLOB NOT NULL,
+    version INT NOT NULL DEFAULT 1,
+    snapshot BOOLEAN NOT NULL DEFAULT FALSE,
+    updated_by BIGINT,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);

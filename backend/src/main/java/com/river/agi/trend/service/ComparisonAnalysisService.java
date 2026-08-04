@@ -66,7 +66,7 @@ public class ComparisonAnalysisService {
         for (PredictionResult pr : predictions) {
             LocalDate date = parseDate(pr.getPredictionDate());
             xAxis.add(pr.getPredictionDate());
-            Double actualForDate = findActualValue(history, date);
+            Double actualForDate = pr.getActualValue() != null ? pr.getActualValue() : findActualValue(history, date);
             actualData.add(actualForDate != null ? Math.round(actualForDate * 100.0) / 100.0 : null);
             predictedData.add(Math.round(pr.getPredictedValue() * 100.0) / 100.0);
             lowerBoundData.add(pr.getLowerBound() != null ? Math.round(pr.getLowerBound() * 100.0) / 100.0 : null);

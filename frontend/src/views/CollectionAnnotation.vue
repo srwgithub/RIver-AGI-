@@ -102,6 +102,10 @@
           <el-button size="small" type="primary" plain :disabled="!selectedDataset" @click="previewClean">
             预览清洗结果
           </el-button>
+          <el-button size="small" type="success" plain :disabled="!selectedDataset" :loading="cleanApplying" @click="applyClean">
+            执行并保存清洗结果
+          </el-button>
+          <el-button v-if="cleanDownloadUrl" size="small" link type="primary" @click="downloadCleanResult">下载清洗结果</el-button>
         </div>
 
         <div class="clean-summary">
@@ -132,7 +136,13 @@
           </el-table-column>
           <el-table-column prop="status" label="状态" width="96">
             <template #default="{ row }">
-              <el-tag size="small" :type="statusType(row.status)" effect="light">
+              <el-tag
+                size="small"
+                :type="statusType(row.status)"
+                effect="light"
+                :class="{ 'status-entry': row.status === 'READY' }"
+                @click="row.status === 'READY' && enterAnnotation(row)"
+              >
                 {{ statusLabel(row.status) }}
               </el-tag>
             </template>
@@ -153,8 +163,8 @@
                 <el-tooltip content="查看/编辑" placement="top">
                   <el-button class="icon-action" :icon="EditPen" circle @click="openTask(row)" />
                 </el-tooltip>
-                <el-tooltip content="后端未开放删除接口" placement="top">
-                  <el-button class="icon-action" :icon="Delete" circle disabled />
+                <el-tooltip content="删除任务" placement="top">
+                  <el-button class="icon-action" :icon="Delete" circle @click="deleteTask(row)" />
                 </el-tooltip>
               </div>
             </template>
@@ -241,16 +251,30 @@
         <el-button type="primary" :loading="saving" @click="createTask">创建任务</el-button>
       </template>
     </el-dialog>
+
+    <el-dialog v-model="editDialog" title="查看/编辑采集标注任务" width="520px">
+      <el-form :model="editingTask" label-width="90px">
+        <el-form-item label="任务名称" required><el-input v-model="editingTask.name" /></el-form-item>
+        <el-form-item label="数据源"><el-input :model-value="editingTask.datasetId ? `数据集 #${editingTask.datasetId}` : (editingTask.mediaType || '未绑定')" disabled /></el-form-item>
+        <el-form-item label="标签体系"><el-select v-model="editingTask.labelSchemaId" style="width:100%" clearable><el-option v-for="schema in schemas" :key="schema.id" :label="schema.name" :value="schema.id" /></el-select></el-form-item>
+        <el-form-item label="协同方式"><el-radio-group v-model="editingTask.collaborationMode"><el-radio label="SINGLE">单人标注</el-radio><el-radio label="TEAM">多人协同</el-radio></el-radio-group></el-form-item>
+        <el-form-item label="任务状态"><el-select v-model="editingTask.status" style="width:100%"><el-option label="草稿" value="DRAFT" /><el-option label="待标注" value="READY" /><el-option label="进行中" value="RUNNING" /><el-option label="已完成" value="COMPLETED" /></el-select></el-form-item>
+      </el-form>
+      <template #footer><el-button @click="editDialog = false">取消</el-button><el-button type="primary" :loading="savingEdit" @click="saveTaskEdit">保存并更新进度</el-button></template>
+    </el-dialog>
   </section>
 </template>
 
 <script setup>
 import { ref, reactive, onMounted, onUnmounted } from 'vue'
-import { ElMessage } from 'element-plus'
+import { ElMessage, ElMessageBox } from 'element-plus'
 import { Plus, Upload, UploadFilled, Filter, UserFilled, EditPen, Picture, Check, Refresh, Delete, Loading } from '@element-plus/icons-vue'
+import { useRouter } from 'vue-router'
 import request from '../utils/request'
+import { getActiveDatasetId, setActiveDatasetId } from '../utils/workspaceSync'
 
 const steps = ['采集数据', '清洗校验', '任务配置', '标注质检']
+const router = useRouter()
 const cleanOptions = [
   { key: 'removeEmpty', label: '移除空行' },
   { key: 'removeDuplicate', label: '去除重复' },
@@ -259,20 +283,25 @@ const cleanOptions = [
 
 const activeStep = ref(0)
 const taskDialog = ref(false)
+const editDialog = ref(false)
+const savingEdit = ref(false)
 const saving = ref(false)
 const uploading = ref(false)
 const taskLoading = ref(false)
+const cleanApplying = ref(false)
 const isDragging = ref(false)
 const datasets = ref([])
 const schemas = ref([])
 const tasks = ref([])
 const uploadedFiles = ref([])
 const activeTask = ref(null)
+const editingTask = ref({})
 const activeMedia = ref(null)
 const selectedDataset = ref(null)
 const taskForm = reactive({ name: '', sourceType: 'DATASET', datasetId: null, labelSchemaId: null, collaborationMode: 'SINGLE', annotationRuleJson: '' })
 const cleanConfig = reactive({ removeEmpty: true, removeDuplicate: true, validateFormat: true })
 const cleanSummary = reactive({})
+const cleanDownloadUrl = ref('')
 
 const stepState = index => {
   if (index < activeStep.value) return 'done'
@@ -285,6 +314,14 @@ const loadData = async () => {
     const [ds, ss] = await Promise.all([request.get('/v1/datasets?page=1&size=100'), request.get('/v1/label-schemas?page=1&size=100')])
     datasets.value = (ds.records || []).filter(d => d.status === 'PARSED')
     schemas.value = ss.records || []
+    const activeId = getActiveDatasetId()
+    const preferred = datasets.value.find(d => String(d.id) === String(activeId)) || datasets.value[0]
+    if (preferred) {
+      selectedDataset.value = preferred.id
+      taskForm.datasetId = preferred.id
+      setActiveDatasetId(preferred.id)
+    }
+    if (!taskForm.labelSchemaId && schemas.value[0]) taskForm.labelSchemaId = schemas.value[0].id
     await loadTasks()
   } catch (e) {
     ElMessage.error('平台数据加载失败')
@@ -336,6 +373,7 @@ const uploadFiles = async files => {
       if (!isMedia && uploaded?.id) {
         selectedDataset.value = uploaded.id
         taskForm.datasetId = uploaded.id
+        setActiveDatasetId(uploaded.id)
       }
       if (isMedia) activeMedia.value = uploaded
       ElMessage.success(`${file.name} 上传成功`)
@@ -361,6 +399,38 @@ const previewClean = async () => {
   } catch (e) {
     ElMessage.error(e.message || '清洗预览失败')
   }
+}
+
+const applyClean = async () => {
+  if (!selectedDataset.value) return ElMessage.warning('请先上传或选择一个已解析数据集')
+  cleanApplying.value = true
+  try {
+    let task = tasks.value.find(t => t.datasetId === selectedDataset.value)
+    if (!task) {
+      task = await request.post('/v1/collection-tasks', { name: '数据清洗任务', sourceType: 'DATASET', datasetId: selectedDataset.value })
+      tasks.value.unshift(task)
+    }
+    const result = await request.post(`/v1/collection-tasks/${task.id}/clean-apply`, cleanConfig)
+    Object.assign(cleanSummary, result)
+    if (result?.outputDatasetId) {
+      selectedDataset.value = result.outputDatasetId
+      taskForm.datasetId = result.outputDatasetId
+      setActiveDatasetId(result.outputDatasetId)
+    }
+    cleanDownloadUrl.value = result?.fileUrl || ''
+    activeTask.value = task
+    activeStep.value = 1
+    await loadData()
+    ElMessage.success(`清洗完成，已生成新数据集 #${result.outputDatasetId}`)
+  } catch (e) {
+    ElMessage.error(e.message || '执行清洗失败')
+  } finally {
+    cleanApplying.value = false
+  }
+}
+
+const downloadCleanResult = () => {
+  if (cleanDownloadUrl.value) window.open(cleanDownloadUrl.value, '_blank', 'noopener')
 }
 
 const createTask = async () => {
@@ -398,13 +468,83 @@ const refreshTask = async task => {
 const openTask = task => {
   activeTask.value = task
   activeStep.value = 3
+  editingTask.value = { ...task }
+  editDialog.value = true
 }
-const progress = task => task.totalItems ? Math.min(100, Math.round((task.completedItems || 0) / task.totalItems * 100)) : 0
+const saveTaskEdit = async () => {
+  if (!editingTask.value.name?.trim()) return ElMessage.warning('请输入任务名称')
+  savingEdit.value = true
+  try {
+    const updated = await request.put(`/v1/collection-tasks/${editingTask.value.id}`, {
+      name: editingTask.value.name,
+      labelSchemaId: editingTask.value.labelSchemaId,
+      collaborationMode: editingTask.value.collaborationMode,
+      status: editingTask.value.status
+    })
+    activeTask.value = updated
+    editDialog.value = false
+    await loadTasks()
+    ElMessage.success('任务已更新，进度已刷新')
+  } catch (e) {
+    ElMessage.error(e.message || '任务更新失败')
+  } finally {
+    savingEdit.value = false
+  }
+}
+const deleteTask = async task => {
+  try {
+    await ElMessageBox.confirm(`确认删除采集标注任务“${task.name}”？`, '删除任务', { type: 'warning' })
+    await request.delete(`/v1/collection-tasks/${task.id}`)
+    if (activeTask.value?.id === task.id) activeTask.value = null
+    await loadTasks()
+    ElMessage.success('采集标注任务已删除')
+  } catch (e) {
+    if (e !== 'cancel') ElMessage.error(e.message || '删除任务失败')
+  }
+}
+const progress = task => {
+  if (task.status === 'COMPLETED' || task.status === 'FINISHED') return 100
+  if (task.status === 'CLEANED') return 25
+  if (task.status === 'READY') return 50
+  if (!task.totalItems) return 0
+  const itemProgress = Math.round((task.completedItems || 0) / task.totalItems * 50)
+  return task.status === 'RUNNING' || task.status === 'IN_PROGRESS' ? 50 + itemProgress : itemProgress
+}
 const formatSize = n => n > 1048576 ? `${(n / 1048576).toFixed(1)} MB` : `${Math.max(1, Math.round(n / 1024))} KB`
-const statusLabel = status => ({ DRAFT: '草稿', RUNNING: '进行中', IN_PROGRESS: '进行中', COMPLETED: '已完成', FINISHED: '已完成', ERROR: '异常', FAILED: '异常' }[status] || status || '草稿')
-const statusType = status => ({ COMPLETED: 'success', FINISHED: 'success', RUNNING: 'primary', IN_PROGRESS: 'primary', ERROR: 'danger', FAILED: 'danger', DRAFT: 'info' }[status] || 'info')
-const goAnnotation = () => { window.location.href = '/annotation' }
-const runQuality = () => ElMessage.info('已进入现有标注质量管理流程，可执行自动校验、抽检和仲裁')
+const statusLabel = status => ({ DRAFT: '草稿', CLEANED: '清洗完成', READY: '待标注', RUNNING: '进行中', IN_PROGRESS: '进行中', COMPLETED: '已完成', FINISHED: '已完成', ERROR: '异常', FAILED: '异常' }[status] || status || '草稿')
+const statusType = status => ({ COMPLETED: 'success', FINISHED: 'success', CLEANED: 'warning', READY: 'primary', RUNNING: 'primary', IN_PROGRESS: 'primary', ERROR: 'danger', FAILED: 'danger', DRAFT: 'info' }[status] || 'info')
+const goAnnotation = async () => {
+  if (!activeTask.value) return ElMessage.warning('请先选择采集标注任务')
+  await enterAnnotation(activeTask.value)
+}
+const enterAnnotation = async task => {
+  if (!task) return ElMessage.warning('请先选择采集标注任务')
+  try {
+    if (task.status === 'DRAFT') {
+      task = await request.put(`/v1/collection-tasks/${task.id}`, { status: 'READY' })
+      await loadTasks()
+    }
+    activeTask.value = task
+    const query = new URLSearchParams({ collectionTaskId: String(task.id) })
+    window.location.href = `/annotation-platform?${query.toString()}`
+  } catch (e) {
+    ElMessage.error(e.message || '任务状态更新失败')
+  }
+}
+const runQuality = async () => {
+  if (!activeTask.value) return ElMessage.warning('请先选择采集标注任务')
+  if (!activeTask.value.datasetId) return ElMessage.warning('当前任务没有关联数据集，无法执行质量校验')
+  try {
+    const result = await request.get('/v1/annotation-tasks?page=1&size=100')
+    const annotationTask = (result.records || []).find(item => String(item.datasetId) === String(activeTask.value.datasetId) && item.status !== 'CANCELLED')
+    if (!annotationTask) return ElMessage.warning('当前数据集还没有标注任务，请先完成任务配置和派发')
+    await request.post(`/v1/annotation-tasks/${annotationTask.id}/auto-validate`)
+    ElMessage.success('自动质量校验完成，正在进入质量管理中心')
+    router.push({ path: '/annotation-quality', query: { taskId: annotationTask.id } })
+  } catch (e) {
+    ElMessage.error(`自动质量校验失败：${e.message || '后端接口不可用'}`)
+  }
+}
 
 let progressTimer
 onMounted(async () => {
@@ -419,6 +559,15 @@ onUnmounted(() => {
 <style scoped>
 .collection-page {
   color: var(--text-1);
+}
+
+.status-entry {
+  cursor: pointer;
+}
+
+.status-entry:hover {
+  filter: brightness(0.96);
+  transform: translateY(-1px);
 }
 
 .page-toolbar {

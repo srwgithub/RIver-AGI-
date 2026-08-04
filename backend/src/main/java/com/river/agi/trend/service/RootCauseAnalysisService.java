@@ -212,6 +212,7 @@ public class RootCauseAnalysisService {
             if (dim.equals(timeField) || dim.equals(targetField)) continue;
             Map<String, Double> byDim = rows.stream()
                     .filter(r -> r.get(dim) != null)
+                    .filter(r -> !Double.isNaN(parseDouble(r.get(targetField))))
                     .collect(Collectors.groupingBy(r -> r.get(dim),
                             Collectors.summingDouble(r -> parseDouble(r.get(targetField)))));
 
@@ -251,6 +252,19 @@ public class RootCauseAnalysisService {
                     if ("number".equals(type) || "integer".equals(type) || "float".equals(type) || "double".equals(type)) {
                         numeric.add(name);
                     } else if (!"date".equals(type) && !"datetime".equals(type) && !"timestamp".equals(type)) {
+                        categorical.add(name);
+                    }
+                }
+            } else {
+                // Parsed datasets currently persist schemaJson as {field: TYPE}.
+                // Keep compatibility with the older {fields:[...]} representation.
+                for (Map.Entry<String, Object> entry : schema.entrySet()) {
+                    String name = entry.getKey();
+                    String type = String.valueOf(entry.getValue()).toUpperCase(Locale.ROOT);
+                    if (type.contains("NUMERIC") || type.contains("NUMBER") || type.contains("INT") ||
+                            type.contains("DECIMAL") || type.contains("DOUBLE") || type.contains("FLOAT")) {
+                        numeric.add(name);
+                    } else if (!type.contains("DATE") && !type.contains("TIME") && !type.contains("TIMESTAMP")) {
                         categorical.add(name);
                     }
                 }

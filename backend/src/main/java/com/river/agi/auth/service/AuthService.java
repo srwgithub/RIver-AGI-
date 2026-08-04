@@ -9,6 +9,7 @@ import com.river.agi.auth.mapper.RoleMapper;
 import com.river.agi.auth.mapper.UserMapper;
 import com.river.agi.auth.util.JwtUtil;
 import com.river.agi.common.BusinessException;
+import com.river.agi.common.annotation.AuditOperation;
 import lombok.RequiredArgsConstructor;
 import org.springframework.security.authentication.AuthenticationManager;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
@@ -63,6 +64,7 @@ public class AuthService {
         return response;
     }
     
+    @AuditOperation(action = "USER_REGISTER", resourceType = "USER", description = "Register new user account")
     public UserResponse register(RegisterRequest request) {
         // Check if username already exists
         if (userMapper.selectOne(new com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper<User>()

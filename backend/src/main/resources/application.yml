@@ -44,6 +44,9 @@ spring:
     locations: classpath:db/migration
     baseline-on-migrate: true
     baseline-version: 0
+    # Some deployed databases contain the retired V18 migration. Ignore only
+    # missing historical migrations; new migrations must still be validated.
+    ignore-migration-patterns: "*:missing"
     # H2 uses different dialect - will auto-detect from datasource
 
   # SQL Init - Only for development with H2 (using Flyway for MySQL)
@@ -172,5 +175,9 @@ prediction:
   default-forecast-days: ${PREDICTION_FORECAST_DAYS:30}
   async-execution: ${PREDICTION_ASYNC:true}
   dl-engine:
-    url: ${DL_ENGINE_URL:http://localhost:5000}
-    enabled: ${DL_ENGINE_ENABLED:false}
+    url: ${DL_ENGINE_URL:http://localhost:5001}
+    enabled: ${DL_ENGINE_ENABLED:true}
+
+monitoring:
+  sample-interval-ms: ${MONITORING_SAMPLE_INTERVAL_MS:300000}
+  sample-initial-delay-ms: ${MONITORING_SAMPLE_INITIAL_DELAY_MS:30000}

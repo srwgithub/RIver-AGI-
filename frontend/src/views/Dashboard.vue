@@ -15,8 +15,8 @@
     <section class="workspace-focus">
       <div class="focus-copy">
         <div class="section-kicker">当前工作区</div>
-        <div class="focus-title">RIver_AGI_下一轮综合测试数据.xlsx</div>
-        <div class="focus-meta"><span class="status-pulse"></span> 已解析 · 25 行 · 8 个字段 · 最近更新 昨天 15:56</div>
+        <div class="focus-title">{{ activeDataset?.name || '尚未选择数据集' }}</div>
+        <div class="focus-meta"><span class="status-pulse"></span> {{ activeDataset ? `已解析 · ${activeDataset.rowCount || 0} 行 · ${activeDataset.columnCount || 0} 个字段 · 最近更新 ${activeDataset.updatedAt || '—'}` : '上传数据后显示工作区状态' }}</div>
         <div class="focus-actions">
           <el-button type="primary" @click="go('/datasets')">查看数据集 <el-icon><ArrowRight /></el-icon></el-button>
           <el-button text @click="go('/analysis')">进入分析</el-button>
@@ -24,8 +24,8 @@
       </div>
       <div class="focus-score">
         <div class="score-label">数据健康度</div>
-        <div class="score-value">92<span>/100</span></div>
-        <div class="score-note">较上次检查 <strong>+4.8%</strong></div>
+        <div class="score-value">{{ healthScore == null ? '—' : healthScore }}<span>/100</span></div>
+        <div class="score-note">{{ healthScore == null ? '运行数据质量分析后显示' : '来自最新质量分析结果' }}</div>
       </div>
       <div class="focus-orbit orbit-one"></div>
       <div class="focus-orbit orbit-two"></div>
@@ -71,9 +71,11 @@
 </template>
 
 <script setup>
-import { computed, ref } from 'vue'
+import { computed, onMounted, reactive, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { ArrowRight, TopRight, Bell, CaretBottom, CaretTop, CircleCheck, Cpu, DataAnalysis, DataLine, Files, Lock, MagicStick, TrendCharts, Upload } from '@element-plus/icons-vue'
+import request from '../utils/request'
+import { getDatasetHealthScore, onDatasetHealth } from '../utils/workspaceSync'
 
 const router = useRouter()
 const user = ref(JSON.parse(localStorage.getItem('user') || '{}'))
@@ -81,12 +83,17 @@ const username = computed(() => user.value.realName || user.value.username || '�
 const currentDate = computed(() => new Intl.DateTimeFormat('zh-CN', { month: 'long', day: 'numeric', weekday: 'long' }).format(new Date()))
 const go = (path) => router.push(path)
 
-const metrics = [
-  { label: '数据集总数', value: '01', trend: '12%', caption: '较上周', trendType: 'positive', tone: 'blue', icon: Files },
-  { label: '分析任务', value: '16', trend: '8%', caption: '较上周', trendType: 'positive', tone: 'green', icon: DataAnalysis },
-  { label: '安全扫描', value: '02', trend: '3%', caption: '风险下降', trendType: 'positive', tone: 'orange', icon: Bell },
-  { label: '预测任务', value: '00', trend: '待创建', caption: '选择数据开始', trendType: 'neutral', tone: 'violet', icon: Cpu }
-]
+const counts = reactive({ datasets: '—', analyses: '—', scans: '—', predictions: '—' })
+const activeDataset = ref(null)
+const healthScore = ref(null)
+const recentDatasets = ref([])
+const activities = ref([])
+const metrics = computed(() => [
+  { label: '数据集总数', value: counts.datasets, trend: '实时', caption: '当前数据库记录', trendType: 'neutral', tone: 'blue', icon: Files },
+  { label: '分析任务', value: counts.analyses, trend: '实时', caption: '画像与质量分析', trendType: 'neutral', tone: 'green', icon: DataAnalysis },
+  { label: '安全扫描', value: counts.scans, trend: '实时', caption: '已执行扫描任务', trendType: 'neutral', tone: 'orange', icon: Bell },
+  { label: '预测任务', value: counts.predictions, trend: '实时', caption: '当前预测任务', trendType: 'neutral', tone: 'violet', icon: Cpu }
+])
 const modules = [
   { name: '数据采集与标注', desc: '导入、清洗、协同标注', icon: Upload, color: '#1664d9', lightColor: '#eaf2ff', path: '/annotation-platform' },
   { name: '标注质量管理', desc: '抽检、审核、质量评分', icon: CircleCheck, color: '#168b5b', lightColor: '#e8f7ef', path: '/annotation-quality' },
@@ -95,12 +102,37 @@ const modules = [
   { name: '预测评估优化', desc: '评估、调优、自动重训练', icon: TrendCharts, color: '#b36b0b', lightColor: '#fff5df', path: '/prediction-evaluation' },
   { name: '安全审计中心', desc: '权限、日志与合规管控', icon: Lock, color: '#be4050', lightColor: '#fff0f1', path: '/security-audit' }
 ]
-const recentDatasets = [{ name: 'RIver_AGI_下一轮综合测试数据.xlsx', type: 'xlsx', rows: 25 }]
-const activities = [
-  { text: '上传了综合测试数据集', time: '昨天 15:56', color: '#1664d9' },
-  { text: '完成安全扫描，发现 0 个高风险项', time: '昨天 15:58', color: '#168b5b' },
-  { text: '自动生成数据画像和推荐图表', time: '昨天 16:02', color: '#6c49b8' },
-  { text: '系统备份已完成', time: '今天 02:00', color: '#b36b0b' },
-  { text: 'AI 助手服务运行正常', time: '今天 09:00', color: '#087d91' }
-]
+onMounted(async () => {
+  try {
+    const [datasets, analyses, scans, predictions, audit] = await Promise.all([
+      request.get('/v1/datasets?page=1&size=20'), request.get('/v1/analysis/tasks/count'), request.get('/v1/security/scans/count'), request.get('/v1/predictions/count'), request.get('/v1/audit/logs?page=1&size=5')
+    ])
+    const records = datasets.records || datasets.data?.records || []
+    recentDatasets.value = records.slice(0, 5).map(item => ({ name: item.name, type: item.fileType || item.fileName?.split('.').pop() || 'file', rows: item.rowCount || 0 }))
+    activeDataset.value = records[0] || null
+    healthScore.value = getDatasetHealthScore(activeDataset.value?.id)
+    if (activeDataset.value?.id) {
+      try {
+        const task = await request.post(`/v1/analysis/quality?datasetId=${activeDataset.value.id}`)
+        const result = typeof task?.resultJson === 'string' ? JSON.parse(task.resultJson) : task?.resultJson
+        const score = result?.overallScore ?? result?.qualityScore
+        healthScore.value = score == null ? healthScore.value : Math.round(Number(score) * (Number(score) <= 1 ? 100 : 1))
+      } catch (qualityError) {
+        healthScore.value = null
+      }
+    }
+    counts.datasets = String(datasets.total ?? records.length)
+    counts.analyses = String(analyses ?? 0); counts.scans = String(scans ?? 0); counts.predictions = String(predictions ?? 0)
+    const logs = audit.records || audit.data?.records || []
+    activities.value = logs.map((item, index) => ({ text: item.actionType || item.action || '系统操作', time: item.createdAt || '最近', color: ['#1664d9','#168b5b','#6c49b8','#b36b0b'][index % 4] }))
+  } catch (error) {
+    activities.value = []
+  }
+})
+
+onDatasetHealth(({ datasetId, score }) => {
+  if (activeDataset.value && String(activeDataset.value.id) === String(datasetId)) {
+    healthScore.value = Math.round(Number(score))
+  }
+})
 </script>

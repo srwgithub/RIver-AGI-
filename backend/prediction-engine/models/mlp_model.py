@@ -300,7 +300,11 @@ class MLPModel:
 
     def load(self, path):
         model_path = os.path.join(path, TF_MODEL_FILENAME)
-        self.model = keras.models.load_model(model_path)
+        # In Keras 3, loading the serialized Adam optimizer can fail when the
+        # optimizer was written by a different TensorFlow/Keras minor version.
+        # Inference only needs the compiled network weights, so skip optimizer
+        # deserialization and keep prediction independent of that runtime detail.
+        self.model = keras.models.load_model(model_path, compile=False)
 
         preprocessor_path = os.path.join(path, "preprocessor.joblib")
         if os.path.exists(preprocessor_path):

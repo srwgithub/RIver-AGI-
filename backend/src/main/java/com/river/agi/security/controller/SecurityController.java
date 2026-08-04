@@ -1,8 +1,10 @@
 package com.river.agi.security.controller;
 
 import com.river.agi.security.entity.AuditLog;
+import com.river.agi.security.entity.SecurityPolicy;
 import com.river.agi.security.entity.SensitiveDataDetection;
 import com.river.agi.security.entity.SecurityScanTask;
+import com.river.agi.security.mapper.SecurityPolicyMapper;
 import com.river.agi.security.service.SecurityService;
 import com.river.agi.common.ApiResponse;
 import com.river.agi.common.PageResult;
@@ -13,6 +15,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.*;
 
+import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Map;
 
@@ -23,6 +26,7 @@ import java.util.Map;
 public class SecurityController {
     
     private final SecurityService securityService;
+    private final SecurityPolicyMapper securityPolicyMapper;
     
     @PostMapping("/datasets/{id}/scan")
     @Operation(summary = "Scan dataset", description = "Scan dataset for sensitive information")
@@ -59,5 +63,35 @@ public class SecurityController {
     @Operation(summary = "Count scan tasks", description = "Get total number of security scan tasks")
     public ApiResponse<Long> countScanTasks() {
         return ApiResponse.ok(securityService.getScanTaskCount());
+    }
+
+    @GetMapping("/policies")
+    @Operation(summary = "List security policies", description = "List security policies for security management pages")
+    public ApiResponse<List<SecurityPolicy>> listPolicies() {
+        return ApiResponse.ok(securityPolicyMapper.selectList(null));
+    }
+
+    @PostMapping("/policies")
+    @Operation(summary = "Save security policy", description = "Create or update a security policy")
+    public ApiResponse<SecurityPolicy> savePolicy(@RequestBody SecurityPolicy policy) {
+        policy.setTenantId(1L);
+        policy.setUpdatedAt(LocalDateTime.now());
+        if (policy.getEnabled() == null) {
+            policy.setEnabled(true);
+        }
+        if (policy.getId() == null) {
+            policy.setCreatedAt(LocalDateTime.now());
+            securityPolicyMapper.insert(policy);
+        } else {
+            securityPolicyMapper.updateById(policy);
+        }
+        return ApiResponse.ok(policy);
+    }
+
+    @DeleteMapping("/policies/{id}")
+    @Operation(summary = "Delete security policy", description = "Delete a security policy")
+    public ApiResponse<Void> deletePolicy(@PathVariable Long id) {
+        securityPolicyMapper.deleteById(id);
+        return ApiResponse.ok(null);
     }
 }

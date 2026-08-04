@@ -1,0 +1,22 @@
+CREATE TABLE IF NOT EXISTS collection_task (
+    id BIGINT AUTO_INCREMENT PRIMARY KEY,
+    name VARCHAR(200) NOT NULL,
+    source_type VARCHAR(30) NOT NULL,
+    media_type VARCHAR(20),
+    source_uri VARCHAR(500),
+    dataset_id BIGINT,
+    label_schema_id BIGINT,
+    cleaning_config_json JSON,
+    cleaning_summary_json JSON,
+    annotation_rule_json JSON,
+    collaboration_mode VARCHAR(20) DEFAULT 'SINGLE',
+    assigned_annotators JSON,
+    status VARCHAR(20) DEFAULT 'DRAFT',
+    total_items INT DEFAULT 0,
+    completed_items INT DEFAULT 0,
+    created_by BIGINT,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    INDEX idx_collection_dataset (dataset_id),
+    INDEX idx_collection_status (status)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;

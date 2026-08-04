@@ -1,0 +1,42 @@
+CREATE TABLE IF NOT EXISTS performance_sample (
+    id BIGINT AUTO_INCREMENT PRIMARY KEY,
+    tenant_id BIGINT DEFAULT 1,
+    prediction_task_id BIGINT,
+    model_version_id BIGINT,
+    sample_type VARCHAR(30) NOT NULL,
+    duration_ms BIGINT,
+    latency_ms DECIMAL(16,4),
+    throughput_qps DECIMAL(16,4),
+    cpu_percent DECIMAL(8,4),
+    memory_percent DECIMAL(8,4),
+    gpu_percent DECIMAL(8,4),
+    storage_io_percent DECIMAL(8,4),
+    status VARCHAR(20) DEFAULT 'SUCCESS',
+    error_code VARCHAR(100),
+    details_json TEXT,
+    sampled_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    INDEX idx_perf_task_time (prediction_task_id, sampled_at),
+    INDEX idx_perf_sampled_at (sampled_at)
+);
+
+CREATE TABLE IF NOT EXISTS runtime_alert (
+    id BIGINT AUTO_INCREMENT PRIMARY KEY,
+    tenant_id BIGINT DEFAULT 1,
+    prediction_task_id BIGINT,
+    sample_id BIGINT,
+    alert_type VARCHAR(40) NOT NULL,
+    severity VARCHAR(20) NOT NULL,
+    title VARCHAR(200) NOT NULL,
+    description VARCHAR(1000),
+    status VARCHAR(20) DEFAULT 'OPEN',
+    threshold_json TEXT,
+    detected_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    resolved_at TIMESTAMP NULL,
+    resolved_by BIGINT,
+    resolution VARCHAR(500),
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    INDEX idx_runtime_alert_task (prediction_task_id, detected_at),
+    INDEX idx_runtime_alert_status (status)
+);

@@ -18,7 +18,7 @@
         <el-option v-for="ds in datasets" :key="ds.id" :label="ds.name" :value="ds.id" />
       </el-select>
       <el-button type="primary" @click="runScan">安全扫描</el-button>
-      <el-button plain @click="viewRisks">查看风险</el-button>
+      <el-button plain :disabled="!selectedDataset" :loading="riskLoading" @click="viewRisks">查看风险</el-button>
       <div class="dataset-hint">
         <strong>{{ currentDatasetName || '未选择数据集' }}</strong>
         <span>扫描后自动汇总风险字段、等级和建议。</span>
@@ -130,6 +130,7 @@ const datasets = ref([])
 const selectedDataset = ref('')
 const scanResult = ref(null)
 const risks = ref([])
+const riskLoading = ref(false)
 const dashboard = ref({
   totalScans: 0,
   completedScans: 0,
@@ -143,8 +144,17 @@ onMounted(async () => {
     const data = await request.get('/v1/datasets?page=1&size=20')
     datasets.value = data.records || []
     const activeId = getActiveDatasetId()
-    if (activeId && datasets.value.some(ds => String(ds.id) === String(activeId))) {
-      selectedDataset.value = Number(activeId)
+    const preferred = datasets.value.find(ds => String(ds.id) === String(activeId)) || datasets.value.find(ds => ds.status === 'PARSED') || datasets.value[0]
+    if (preferred) {
+      selectedDataset.value = Number(preferred.id)
+      if (!activeId) localStorage.setItem('river_active_dataset_id', String(preferred.id))
+      try {
+        const existing = await request.get(`/v1/security/datasets/${preferred.id}/risks`)
+        risks.value = Array.isArray(existing) ? existing : []
+        if (risks.value.length) scanResult.value = { status: 'COMPLETED' }
+      } catch (_) {
+        // No prior scan is a real empty state; the scan action remains available.
+      }
     }
   } catch (e) {
     console.error('加载数据集失败:', e)
@@ -166,6 +176,18 @@ const runScan = async () => {
   }
   try {
     scanResult.value = await request.post(`/v1/security/datasets/${selectedDataset.value}/scan`)
+    // The scan response already contains the latest findings; render them immediately
+    // instead of requiring a second click on "查看风险".
+    risks.value = (scanResult.value.scanResults || []).map((item, index) => ({
+      id: item.id || `${selectedDataset.value}-${index}`,
+      ...item,
+      fieldName: item.fieldName || item.columnName
+    }))
+    try {
+      dashboard.value = await request.get('/v1/security/dashboard')
+    } catch (_) {
+      // Keep the completed scan visible even if the aggregate dashboard refresh fails.
+    }
     ElMessage.success('扫描完成')
   } catch (e) {
     ElMessage.error('扫描失败: ' + (e.message || '未知错误'))
@@ -182,15 +204,21 @@ const viewRisks = async () => {
     ElMessage.warning('请选择数据集')
     return
   }
+  riskLoading.value = true
   try {
     const data = await request.get(`/v1/security/datasets/${selectedDataset.value}/risks`)
     risks.value = data || []
+    // Keep the result panel visible after a successful zero-result lookup.
+    // A completed query with no findings is different from an unqueried page.
+    scanResult.value = scanResult.value || { status: 'COMPLETED' }
     if (!data || data.length === 0) {
-      ElMessage.info('该数据集暂无扫描风险记录，请先执行安全扫描')
+      ElMessage.info(scanResult.value?.status === 'COMPLETED'
+        ? '本次扫描未发现敏感数据风险'
+        : '该数据集暂无扫描风险记录，请先执行安全扫描')
     }
   } catch (e) {
     ElMessage.error('获取风险失败: ' + (e.message || '未知错误'))
-  }
+  } finally { riskLoading.value = false }
 }
 </script>
 

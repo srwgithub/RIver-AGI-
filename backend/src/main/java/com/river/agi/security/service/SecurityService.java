@@ -506,19 +506,39 @@ public class SecurityService {
     }
 
     public PageResult<AuditLog> getAuditLogs(int page, int size, Long userId, String resourceType) {
-        Page<AuditLog> pageRequest = new Page<>(page, size);
-        Page<AuditLog> pageResult;
+        return getAuditLogs(page, size, userId, resourceType, null, null, null);
+    }
 
-        if (userId != null) {
-            pageResult = auditLogMapper.selectByUserId(pageRequest, userId);
-        } else if (resourceType != null) {
-            pageResult = auditLogMapper.selectByResourceType(pageRequest, resourceType);
-        } else {
-            pageResult = auditLogMapper.selectPage(pageRequest,
-                    new LambdaQueryWrapper<AuditLog>().orderByDesc(AuditLog::getCreatedAt));
-        }
+    public PageResult<AuditLog> getAuditLogs(int page, int size, Long userId, String resourceType,
+                                             String actionType, java.time.LocalDate startDate,
+                                             java.time.LocalDate endDate) {
+        Page<AuditLog> pageRequest = new Page<>(page, size);
+        LambdaQueryWrapper<AuditLog> query = new LambdaQueryWrapper<AuditLog>()
+                .orderByDesc(AuditLog::getCreatedAt);
+        if (userId != null) query.eq(AuditLog::getUserId, userId);
+        if (resourceType != null && !resourceType.isBlank()) query.like(AuditLog::getResourceType, resourceType);
+        if (actionType != null && !actionType.isBlank()) query.like(AuditLog::getActionType, actionType);
+        if (startDate != null) query.ge(AuditLog::getCreatedAt, startDate.atStartOfDay());
+        if (endDate != null) query.lt(AuditLog::getCreatedAt, endDate.plusDays(1).atStartOfDay());
+        Page<AuditLog> pageResult = auditLogMapper.selectPage(pageRequest, query);
 
         return PageResult.of(pageResult.getRecords(), pageResult.getTotal(), page, size);
+    }
+
+    public Map<String, Object> getComplianceSummary() {
+        Map<String, Object> summary = new LinkedHashMap<>();
+        long auditLogs = auditLogMapper.selectCount(new LambdaQueryWrapper<AuditLog>());
+        long highRisk = sensitiveDataDetectionMapper.selectCount(new LambdaQueryWrapper<SensitiveDataDetection>()
+                .eq(SensitiveDataDetection::getRiskLevel, "HIGH"));
+        long scans = securityScanTaskMapper.selectCount(new LambdaQueryWrapper<SecurityScanTask>());
+        summary.put("auditLogs", auditLogs);
+        summary.put("highRiskCount", highRisk);
+        summary.put("securityScans", scans);
+        summary.put("auditTrailComplete", auditLogs > 0);
+        summary.put("privacyProtectionConfigured", highRisk == 0 || scans > 0);
+        summary.put("standards", List.of("《数据安全法》", "《个人信息保护法》"));
+        summary.put("generatedAt", LocalDateTime.now());
+        return summary;
     }
 
     @AuditOperation(action = "MASK_DATA", resourceType = "SECURITY_MASK", description = "Mask sensitive data in dataset with preview and file generation")

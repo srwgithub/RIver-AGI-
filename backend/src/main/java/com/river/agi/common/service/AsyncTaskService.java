@@ -4,6 +4,7 @@ import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.river.agi.common.BusinessException;
 import com.river.agi.common.PageResult;
 import com.river.agi.common.SecurityUtils;
 import com.river.agi.common.entity.AsyncTask;
@@ -165,7 +166,15 @@ public class AsyncTaskService {
     public AsyncTask getTask(Long taskId) {
         AsyncTask task = asyncTaskMapper.selectById(taskId);
         if (task == null) {
-            throw new RuntimeException("Task not found");
+            throw new BusinessException("任务不存在");
+        }
+        return task;
+    }
+    
+    public AsyncTask getTask(Long taskId, Long userId) {
+        AsyncTask task = getTask(taskId);
+        if (task.getCreatedBy() != null && !task.getCreatedBy().equals(userId)) {
+            throw new BusinessException("无权访问此任务");
         }
         return task;
     }
@@ -174,8 +183,8 @@ public class AsyncTaskService {
         return asyncTaskMapper.selectByUserId(userId);
     }
     
-    public Map<String, Object> getTaskProgress(Long taskId) {
-        AsyncTask task = getTask(taskId);
+    public Map<String, Object> getTaskProgress(Long taskId, Long userId) {
+        AsyncTask task = getTask(taskId, userId);
         Map<String, Object> progress = new HashMap<>();
         progress.put("taskId", task.getId());
         progress.put("status", task.getStatus());
@@ -197,10 +206,13 @@ public class AsyncTaskService {
         return progress;
     }
     
-    public PageResult<AsyncTask> getTaskList(int page, int size, String status, String taskType) {
+    public PageResult<AsyncTask> getTaskList(int page, int size, String status, String taskType, Long userId) {
         Page<AsyncTask> pageRequest = new Page<>(page, size);
         LambdaQueryWrapper<AsyncTask> wrapper = new LambdaQueryWrapper<>();
         
+        if (userId != null) {
+            wrapper.eq(AsyncTask::getCreatedBy, userId);
+        }
         if (status != null && !status.isEmpty()) {
             wrapper.eq(AsyncTask::getStatus, status);
         }
@@ -225,10 +237,10 @@ public class AsyncTaskService {
         return asyncTaskMapper.selectPendingTasks(limit);
     }
     
-    public void retryTask(Long taskId) {
-        AsyncTask task = getTask(taskId);
+    public void retryTask(Long taskId, Long userId) {
+        AsyncTask task = getTask(taskId, userId);
         if (!AsyncTask.Status.FAILED.name().equals(task.getStatus())) {
-            throw new RuntimeException("Only failed tasks can be retried");
+            throw new BusinessException("只有失败的任务才能重试");
         }
         
         task.setStatus(AsyncTask.Status.PENDING.name());

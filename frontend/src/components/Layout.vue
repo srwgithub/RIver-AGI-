@@ -11,6 +11,7 @@
       </div>
       <el-menu
         :default-active="activeMenu"
+        :default-openeds="defaultOpeneds"
         :collapse="isCollapsed"
         :collapse-transition="false"
         background-color="transparent"
@@ -29,64 +30,98 @@
           <template #title>数据中心</template>
         </el-menu-item>
 
-        <el-sub-menu index="annotation-sub">
+        <el-sub-menu index="annotation-sub" popper-class="sidebar-module-popper">
           <template #title>
             <el-icon><Upload /></el-icon>
             <span>数据采集与标注平台</span>
           </template>
-          <el-menu-item index="/collection-annotation">多源数据导入</el-menu-item>
-          <el-menu-item index="/annotation-platform">标注工作台</el-menu-item>
+          <el-menu-item-group title="数据采集与导入">
+            <el-menu-item index="/collection-annotation">多源数据导入</el-menu-item>
+            <el-menu-item index="/collection-annotation/config">任务配置与派发</el-menu-item>
+          </el-menu-item-group>
+          <el-menu-item-group title="标注执行">
+            <el-menu-item index="/annotation-platform">标注工作台</el-menu-item>
+          </el-menu-item-group>
+          <el-menu-item-group title="规则配置">
+            <el-menu-item index="/collection-annotation/config/rules">采集标注规则</el-menu-item>
+          </el-menu-item-group>
         </el-sub-menu>
 
-        <el-sub-menu index="quality-sub">
+        <el-sub-menu index="quality-sub" popper-class="sidebar-module-popper">
           <template #title>
             <el-icon><CircleCheck /></el-icon>
             <span>标注质量管理</span>
           </template>
-          <el-menu-item index="/annotation-quality">质量抽检</el-menu-item>
-          <el-menu-item index="/annotation-quality/rules">规则配置</el-menu-item>
+          <el-menu-item-group title="质量执行">
+            <el-menu-item index="/annotation-quality">质量管理中心</el-menu-item>
+          </el-menu-item-group>
+          <el-menu-item-group title="规则配置">
+            <el-menu-item index="/annotation-quality/rules">规则配置后台</el-menu-item>
+          </el-menu-item-group>
         </el-sub-menu>
 
-        <el-sub-menu index="prediction-sub">
+        <el-sub-menu index="prediction-sub" popper-class="sidebar-module-popper">
           <template #title>
             <el-icon><Cpu /></el-icon>
             <span>市场需求预测引擎</span>
           </template>
-          <el-menu-item index="/prediction-engine">预测创建</el-menu-item>
-          <el-menu-item index="/prediction-engine?tab=models">模型版本</el-menu-item>
-          <el-menu-item index="/prediction-engine?tab=abtest">A/B测试</el-menu-item>
+          <el-menu-item-group title="预测业务">
+            <el-menu-item index="/prediction-engine">预测创建</el-menu-item>
+          </el-menu-item-group>
+          <el-menu-item-group title="模型与实验">
+            <el-menu-item index="/prediction-engine/models">模型管理</el-menu-item>
+          </el-menu-item-group>
+          <el-menu-item-group title="引擎配置">
+            <el-menu-item index="/prediction-engine/config">引擎规则配置</el-menu-item>
+          </el-menu-item-group>
         </el-sub-menu>
 
-        <el-sub-menu index="trend-sub">
+        <el-sub-menu index="trend-sub" popper-class="sidebar-module-popper">
           <template #title>
             <el-icon><DataLine /></el-icon>
             <span>趋势分析与可视化</span>
           </template>
-          <el-menu-item index="/trend-dashboard">趋势看板</el-menu-item>
-          <el-menu-item index="/charts">图表中心</el-menu-item>
-          <el-menu-item index="/trend-dashboard?tab=reports">自定义报表</el-menu-item>
+          <el-menu-item-group title="趋势分析">
+            <el-menu-item index="/trend-dashboard">趋势看板</el-menu-item>
+            <el-menu-item index="/charts">图表中心</el-menu-item>
+          </el-menu-item-group>
+          <el-menu-item-group title="报表配置">
+            <el-menu-item index="/trend-dashboard/config">看板配置后台</el-menu-item>
+            <el-menu-item index="/trend-dashboard/reports">自定义报表</el-menu-item>
+          </el-menu-item-group>
         </el-sub-menu>
 
-        <el-sub-menu index="optimization-sub">
+        <el-sub-menu index="optimization-sub" popper-class="sidebar-module-popper">
           <template #title>
             <el-icon><TrendCharts /></el-icon>
-            <span>预测评估与优化</span>
+            <span>预测结果评估与优化</span>
           </template>
-          <el-menu-item index="/prediction-evaluation">评估大屏</el-menu-item>
-          <el-menu-item index="/model-optimization">评估中心</el-menu-item>
-          <el-menu-item index="/model-optimization?tab=tuning">自动调优</el-menu-item>
-          <el-menu-item index="/model-optimization?tab=retraining">模型重训练</el-menu-item>
+          <el-menu-item-group title="评估分析">
+            <el-menu-item index="/model-optimization">模块总览</el-menu-item>
+            <el-menu-item index="/model-optimization/accuracy">准确率评估</el-menu-item>
+            <el-menu-item index="/model-optimization/performance">性能监控</el-menu-item>
+            <el-menu-item index="/model-optimization/bias">偏差分析</el-menu-item>
+          </el-menu-item-group>
+          <el-menu-item-group title="模型优化">
+            <el-menu-item index="/model-optimization/retraining">迭代优化与重训</el-menu-item>
+            <el-menu-item index="/prediction-evaluation/config">优化配置中心</el-menu-item>
+          </el-menu-item-group>
         </el-sub-menu>
 
-        <el-sub-menu index="security-sub">
+        <el-sub-menu index="security-sub" popper-class="sidebar-module-popper">
           <template #title>
             <el-icon><Lock /></el-icon>
             <span>数据管理与安全审计</span>
           </template>
-          <el-menu-item index="/security">安全中心</el-menu-item>
-          <el-menu-item index="/audit">审计日志</el-menu-item>
-          <el-menu-item index="/security-admin">权限管理</el-menu-item>
-          <el-menu-item index="/security-admin?tab=backup">备份恢复</el-menu-item>
+          <el-menu-item-group title="审计与追溯">
+            <el-menu-item index="/security">安全中心</el-menu-item>
+            <el-menu-item index="/audit">审计日志</el-menu-item>
+          </el-menu-item-group>
+          <el-menu-item-group title="安全管理">
+            <el-menu-item index="/security-admin">权限管理</el-menu-item>
+            <el-menu-item index="/security-audit/backup">备份恢复</el-menu-item>
+            <el-menu-item index="/security-audit/config">安全配置后台</el-menu-item>
+          </el-menu-item-group>
         </el-sub-menu>
 
         <el-menu-item index="/chat">
@@ -222,10 +257,10 @@ const searchDialogVisible = ref(false)
 const user = ref(JSON.parse(localStorage.getItem('user') || '{}'))
 const navigationItems = [
   { name: '数据中心', group: '数据管理', path: '/datasets' }, { name: '多源数据导入', group: '数据采集与标注', path: '/collection-annotation' },
-  { name: '标注工作台', group: '数据采集与标注', path: '/annotation-platform' }, { name: '质量抽检', group: '标注质量管理', path: '/annotation-quality' },
-  { name: '预测创建', group: '市场需求预测', path: '/prediction-engine' }, { name: '趋势看板', group: '趋势分析', path: '/trend-dashboard' },
-  { name: '图表中心', group: '趋势分析', path: '/charts' }, { name: '安全中心', group: '安全审计', path: '/security' },
-  { name: '审计日志', group: '安全审计', path: '/audit' }, { name: 'AI 对话', group: '智能助手', path: '/chat' }
+  { name: '任务配置与派发', group: '数据采集与标注', path: '/collection-annotation/config' }, { name: '标注工作台', group: '数据采集与标注', path: '/annotation-platform' }, { name: '采集标注规则', group: '数据采集与标注', path: '/collection-annotation/config/rules' }, { name: '质量抽检', group: '标注质量管理', path: '/annotation-quality' },
+  { name: '预测创建', group: '市场需求预测', path: '/prediction-engine' }, { name: '模型管理后台', group: '市场需求预测', path: '/prediction-engine/models' }, { name: '引擎规则配置', group: '市场需求预测', path: '/prediction-engine/config' }, { name: '趋势看板', group: '趋势分析', path: '/trend-dashboard' },
+  { name: '图表中心', group: '趋势分析', path: '/charts' }, { name: '看板配置后台', group: '趋势分析', path: '/trend-dashboard/config' }, { name: '安全中心', group: '安全审计', path: '/security' },
+  { name: '审计日志', group: '安全审计', path: '/audit' }, { name: '安全配置后台', group: '安全审计', path: '/security-audit/config' }, { name: 'AI 对话', group: '智能助手', path: '/chat' }
 ]
 const notifications = [
   { title: '数据解析完成', detail: '综合测试数据已可用于分析', time: '15:56', type: 'success', path: '/datasets' },
@@ -239,6 +274,24 @@ const searchResults = computed(() => {
 const openSearchResult = path => { searchDialogVisible.value = false; searchKeyword.value = ''; router.push(path) }
 
 const activeMenu = computed(() => route.fullPath)
+const defaultOpeneds = computed(() => {
+  const modulePaths = {
+    '/collection-annotation': 'annotation-sub',
+    '/annotation-platform': 'annotation-sub',
+    '/annotation-quality': 'quality-sub',
+    '/prediction-engine': 'prediction-sub',
+    '/trend-dashboard': 'trend-sub',
+    '/trend-dashboard/reports': 'trend-sub',
+    '/charts': 'trend-sub',
+    '/model-optimization': 'optimization-sub',
+    '/prediction-evaluation': 'optimization-sub',
+    '/security': 'security-sub',
+    '/audit': 'security-sub',
+    '/security-admin': 'security-sub'
+  }
+  const key = Object.keys(modulePaths).find(path => route.path.startsWith(path))
+  return key ? [modulePaths[key]] : []
+})
 
 const menuTitleMap = {
   '/dashboard': { title: '工作台', parent: null },
@@ -246,16 +299,28 @@ const menuTitleMap = {
   '/datasets/:id/preview': { title: '数据集预览', parent: { name: '数据中心', path: '/datasets' } },
   '/analysis': { title: '数据分析', parent: null },
   '/collection-annotation': { title: '多源数据导入', parent: { name: '数据采集与标注平台', path: '/collection-annotation' } },
+  '/collection-annotation/config': { title: '任务配置与派发', parent: { name: '数据采集与标注平台', path: '/collection-annotation' } },
+  '/collection-annotation/config/rules': { title: '采集标注规则', parent: { name: '数据采集与标注平台', path: '/collection-annotation' } },
   '/annotation-platform': { title: '标注工作台', parent: { name: '数据采集与标注平台', path: '/annotation-platform' } },
-  '/annotation-quality': { title: '质量抽检', parent: { name: '标注质量管理', path: '/annotation-quality' } },
-  '/annotation-quality/rules': { title: '规则配置', parent: { name: '标注质量管理', path: '/annotation-quality' } },
+  '/annotation-quality': { title: '质量管理中心', parent: { name: '标注质量管理', path: '/annotation-quality' } },
+  '/annotation-quality/rules': { title: '规则配置后台', parent: { name: '标注质量管理', path: '/annotation-quality' } },
   '/prediction-engine': { title: '预测创建', parent: { name: '市场需求预测引擎', path: '/prediction-engine' } },
+  '/prediction-engine/models': { title: '模型管理后台', parent: { name: '市场需求预测引擎', path: '/prediction-engine' } },
+  '/prediction-engine/config': { title: '引擎规则配置', parent: { name: '市场需求预测引擎', path: '/prediction-engine' } },
   '/prediction': { title: '预测详情', parent: { name: '市场需求预测引擎', path: '/prediction-engine' } },
-  '/trend-dashboard': { title: '趋势看板', parent: { name: '趋势分析与可视化', path: '/trend-dashboard' } },
-  '/charts': { title: '图表中心', parent: { name: '趋势分析与可视化', path: '/charts' } },
-  '/model-optimization': { title: '评估中心', parent: { name: '预测评估与优化', path: '/model-optimization' } },
-  '/prediction-evaluation': { title: '预测评估', parent: { name: '预测评估与优化', path: '/model-optimization' } },
+  '/trend-dashboard': { title: '趋势看板', parent: { name: '趋势分析与可视化', path: '/charts' } },
+  '/trend-dashboard/config': { title: '看板配置后台', parent: { name: '趋势分析与可视化', path: '/trend-dashboard' } },
+  '/trend-dashboard/reports': { title: '自定义报表', parent: { name: '趋势分析与可视化', path: '/trend-dashboard' } },
+  '/charts': { title: '图表中心', parent: null },
+  '/model-optimization': { title: '预测结果评估与优化', parent: null },
+  '/model-optimization/accuracy': { title: '模型准确率评估', parent: { name: '预测结果评估与优化', path: '/model-optimization' } },
+  '/model-optimization/performance': { title: '模型性能监控中心', parent: { name: '预测结果评估与优化', path: '/model-optimization' } },
+  '/model-optimization/bias': { title: '预测偏差分析工作台', parent: { name: '预测结果评估与优化', path: '/model-optimization' } },
+  '/model-optimization/retraining': { title: '迭代优化与 Retraining', parent: { name: '预测结果评估与优化', path: '/model-optimization' } },
+  '/prediction-evaluation': { title: '预测评估', parent: { name: '预测结果评估与优化', path: '/model-optimization' } },
+  '/prediction-evaluation/config': { title: '预测评估中心及模型优化系统', parent: { name: '预测结果评估与优化', path: '/model-optimization' } },
   '/security-audit': { title: '安全审计', parent: { name: '数据管理与安全审计', path: '/security-audit' } },
+  '/security-audit/config': { title: '安全配置后台', parent: { name: '数据管理与安全审计', path: '/security-audit' } },
   '/security': { title: '安全中心', parent: { name: '数据管理与安全审计', path: '/security' } },
   '/audit': { title: '审计日志', parent: { name: '数据管理与安全审计', path: '/audit' } },
   '/security-admin': { title: '权限管理', parent: { name: '数据管理与安全审计', path: '/security-admin' } },

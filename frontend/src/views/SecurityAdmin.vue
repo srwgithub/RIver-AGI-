@@ -1,40 +1,65 @@
 <template>
-  <div class="security-admin">
-    <div class="page-heading"><div><span class="eyebrow">RIver AGI / GOVERNANCE</span><h2>安全管理后台</h2><p>统一管理安全策略、数据分级、权限和备份恢复。</p></div><el-button type="primary" @click="createBackup">立即备份</el-button></div>
-    <el-row :gutter="18">
-      <el-col :span="12"><el-card><template #header><div class="card-heading"><span>安全策略与数据分级</span><el-button link type="primary" @click="openPolicy()">新增策略</el-button></div></template><el-table :data="policies" stripe><el-table-column prop="name" label="策略名称" /><el-table-column prop="policyType" label="类型" /><el-table-column prop="classification" label="数据级别" /><el-table-column label="状态"><template #default="s"><el-switch v-model="s.row.enabled" @change="savePolicy(s.row)" /></template></el-table-column><el-table-column label="操作"><template #default="s"><el-button link @click="openPolicy(s.row)">编辑</el-button><el-button link type="danger" @click="removePolicy(s.row)">删除</el-button></template></el-table-column></el-table></el-card></el-col>
-      <el-col :span="12"><el-card><template #header>角色与权限</template><el-table :data="roles" stripe><el-table-column prop="name" label="角色" /><el-table-column prop="code" label="编码" /><el-table-column prop="description" label="说明" /></el-table><el-divider /><el-table :data="permissions" size="small"><el-table-column prop="name" label="权限" /><el-table-column prop="code" label="权限码" /><el-table-column prop="resourcePath" label="资源路径" /></el-table></el-card></el-col>
-    </el-row>
-    <el-card id="backup-section" ref="backupSectionRef" class="backup-card"><template #header><div class="card-heading"><span>数据备份与恢复</span><span class="muted">定时备份：每日 03:00，最多保留 10 份</span></div></template><el-table :data="backups" stripe><el-table-column prop="backupId" label="备份编号" /><el-table-column prop="type" label="类型" /><el-table-column prop="status" label="状态" /><el-table-column prop="sizeBytes" label="大小" /><el-table-column prop="createdAt" label="创建时间" /><el-table-column label="操作"><template #default="s"><el-button link type="warning" :disabled="s.row.status !== 'COMPLETED'" @click="restoreBackup(s.row)">恢复</el-button></template></el-table-column></el-table></el-card>
-    <el-dialog v-model="policyDialog" title="安全策略" width="500px"><el-form :model="editingPolicy" label-width="90px"><el-form-item label="策略名称"><el-input v-model="editingPolicy.name" /></el-form-item><el-form-item label="策略类型"><el-select v-model="editingPolicy.policyType"><el-option label="数据分级" value="DATA_CLASSIFICATION" /><el-option label="访问控制" value="ACCESS_CONTROL" /><el-option label="脱敏策略" value="MASKING" /><el-option label="保留期限" value="RETENTION" /></el-select></el-form-item><el-form-item label="数据级别"><el-select v-model="editingPolicy.classification"><el-option label="公开" value="PUBLIC" /><el-option label="内部" value="INTERNAL" /><el-option label="敏感" value="SENSITIVE" /><el-option label="严格受限" value="RESTRICTED" /></el-select></el-form-item><el-form-item label="规则 JSON"><el-input v-model="editingPolicy.rulesJson" type="textarea" placeholder='{"retentionDays":365,"needApproval":true}' /></el-form-item><el-form-item label="启用"><el-switch v-model="editingPolicy.enabled" /></el-form-item></el-form><template #footer><el-button @click="policyDialog=false">取消</el-button><el-button type="primary" @click="savePolicy(editingPolicy); policyDialog=false">保存</el-button></template></el-dialog>
+  <div class="security-admin page-container">
+    <header class="page-heading">
+      <div><span class="eyebrow">ACCESS CONTROL ADMINISTRATION</span><h1>权限管理后台</h1><p>维护角色、权限目录和角色授权关系，所有变更保存到后端。</p></div>
+      <el-button @click="router.push('/security-audit')">返回审计中心</el-button>
+    </header>
+
+    <el-card shadow="never" class="panel">
+      <template #header><div class="panel-title"><span>角色与权限</span><el-button type="primary" :loading="loading" @click="load">刷新</el-button></div></template>
+      <div class="toolbar"><el-button type="primary" @click="openRole()">新增角色</el-button><span>已加载 {{ roles.length }} 个角色、{{ permissions.length }} 项权限</span></div>
+      <el-table :data="roles" stripe empty-text="暂无角色数据，请先刷新或联系管理员初始化">
+        <el-table-column prop="name" label="角色名称" min-width="150" />
+        <el-table-column prop="code" label="角色编码" min-width="140" />
+        <el-table-column prop="description" label="说明" min-width="220" show-overflow-tooltip />
+        <el-table-column label="授权数量" width="110"><template #default="{ row }"><el-tag>{{ rolePermissionIds[row.id]?.length || 0 }} 项</el-tag></template></el-table-column>
+        <el-table-column label="操作" width="220" fixed="right"><template #default="{ row }"><el-button link type="primary" @click="openPermissions(row)">配置权限</el-button><el-button link @click="openRole(row)">编辑</el-button><el-button link type="danger" @click="removeRole(row)">删除</el-button></template></el-table-column>
+      </el-table>
+    </el-card>
+
+    <el-dialog v-model="roleVisible" :title="editingRole.id ? '编辑角色' : '新增角色'" width="500px">
+      <el-form :model="editingRole" label-position="top"><el-form-item label="角色名称" required><el-input v-model="editingRole.name" /></el-form-item><el-form-item label="角色编码" required><el-input v-model="editingRole.code" /></el-form-item><el-form-item label="说明"><el-input v-model="editingRole.description" type="textarea" /></el-form-item></el-form>
+      <template #footer><el-button @click="roleVisible=false">取消</el-button><el-button type="primary" :loading="saving" @click="saveRole">保存</el-button></template>
+    </el-dialog>
+
+    <el-dialog v-model="permissionVisible" :title="`配置权限：${activeRole.name || ''}`" width="720px">
+      <el-alert title="勾选后保存，授权关系将真实写入后端。" type="info" :closable="false" class="permission-tip" />
+      <el-checkbox-group v-model="selectedPermissionIds" class="permission-grid"><el-checkbox v-for="permission in permissions" :key="permission.id" :label="permission.id" border><span>{{ permission.name }}</span><small>{{ permission.code }}</small></el-checkbox></el-checkbox-group>
+      <template #footer><el-button @click="permissionVisible=false">取消</el-button><el-button type="primary" :loading="saving" @click="savePermissions">保存授权</el-button></template>
+    </el-dialog>
   </div>
 </template>
+
 <script setup>
-import { ref, onMounted, nextTick, watch } from 'vue'
-import { useRoute } from 'vue-router'
+import { onMounted, reactive, ref } from 'vue'
+import { useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import request from '../utils/request'
-const roles=ref([]), permissions=ref([]), policies=ref([]), backups=ref([]), policyDialog=ref(false)
-const route = useRoute()
-const backupSectionRef = ref(null)
-const editingPolicy=ref({name:'',policyType:'DATA_CLASSIFICATION',classification:'INTERNAL',rulesJson:'{}',enabled:true})
-const load=async()=>{ try { roles.value=await request.get('/v1/security-admin/roles'); permissions.value=await request.get('/v1/security-admin/permissions'); policies.value=await request.get('/v1/security-admin/policies'); backups.value=await request.get('/v1/backups') } catch(e){ElMessage.error('加载安全管理数据失败：'+e.message)} }
-const openPolicy=p=>{editingPolicy.value=p?{...p}:{name:'',policyType:'DATA_CLASSIFICATION',classification:'INTERNAL',rulesJson:'{}',enabled:true};policyDialog.value=true}
-const savePolicy=async p=>{try{await request.post('/v1/security-admin/policies',p);await load();ElMessage.success('策略已保存')}catch(e){ElMessage.error(e.message)}}
-const removePolicy=async p=>{try{await ElMessageBox.confirm('确认删除该安全策略？','提示',{type:'warning'});await request.delete(`/v1/security-admin/policies/${p.id}`);await load()}catch(e){if(e!=='cancel')ElMessage.error(e.message)}}
-const createBackup=async()=>{try{await request.post('/v1/backups/create?type=MANUAL');await load();ElMessage.success('备份已创建')}catch(e){ElMessage.error(e.message)}}
-const restoreBackup=async b=>{try{await ElMessageBox.confirm('恢复将覆盖当前部分数据，确认继续？','高风险操作',{type:'warning'});await request.post(`/v1/backups/${b.backupId}/restore`);ElMessage.success('恢复操作已完成')}catch(e){if(e!=='cancel')ElMessage.error(e.message)}}
-const focusBackup = async () => {
-  if (route.query.tab !== 'backup') return
-  await nextTick()
-  backupSectionRef.value?.$el?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+
+const router = useRouter()
+const loading = ref(false), saving = ref(false), roles = ref([]), permissions = ref([]), rolePermissionIds = ref({})
+const roleVisible = ref(false), permissionVisible = ref(false), activeRole = ref({}), selectedPermissionIds = ref([])
+const editingRole = reactive({ id: null, name: '', code: '', description: '' })
+
+async function load() {
+  loading.value = true
+  try {
+    const [roleRows, permissionRows] = await Promise.all([request.get('/v1/security-admin/roles'), request.get('/v1/security-admin/permissions')])
+    roles.value = Array.isArray(roleRows) ? roleRows : []
+    permissions.value = Array.isArray(permissionRows) ? permissionRows : []
+    const map = {}
+    await Promise.all(roles.value.map(async role => { try { map[role.id] = await request.get(`/v1/security-admin/roles/${role.id}/permissions`) || [] } catch (_) { map[role.id] = [] } }))
+    rolePermissionIds.value = map
+  } catch (e) { ElMessage.error(`权限数据加载失败：${e?.response?.data?.message || e.message || '接口不可用'}`) } finally { loading.value = false }
 }
-onMounted(async () => {
-  await load()
-  await focusBackup()
-})
-watch(() => route.query.tab, focusBackup)
+function openRole(role) { Object.assign(editingRole, role ? { ...role } : { id: null, name: '', code: '', description: '' }); roleVisible.value = true }
+async function saveRole() { if (!editingRole.name || !editingRole.code) return ElMessage.warning('请填写角色名称和编码'); saving.value = true; try { await request.post('/v1/security-admin/roles', { ...editingRole }); roleVisible.value = false; await load(); ElMessage.success('角色已保存') } catch (e) { ElMessage.error(`保存失败：${e.message || '接口不可用'}`) } finally { saving.value = false } }
+async function removeRole(role) { try { await ElMessageBox.confirm(`确认删除角色“${role.name}”？`, '删除角色', { type: 'warning' }); await request.delete(`/v1/security-admin/roles/${role.id}`); await load(); ElMessage.success('角色已删除') } catch (e) { if (e !== 'cancel') ElMessage.error(`删除失败：${e.message || '接口不可用'}`) } }
+async function openPermissions(role) { activeRole.value = role; selectedPermissionIds.value = [...(rolePermissionIds.value[role.id] || [])]; permissionVisible.value = true }
+async function savePermissions() { saving.value = true; try { await request.put(`/v1/security-admin/roles/${activeRole.value.id}/permissions`, { permissionIds: selectedPermissionIds.value }); permissionVisible.value = false; await load(); ElMessage.success('权限授权已保存') } catch (e) { ElMessage.error(`授权保存失败：${e.message || '接口不可用'}`) } finally { saving.value = false } }
+onMounted(load)
 </script>
+
 <style scoped>
-.page-heading,.card-heading{display:flex;align-items:center;justify-content:space-between}.page-heading{margin-bottom:22px}.page-heading h2{margin:5px 0}.page-heading p,.muted{color:var(--river-muted);font-size:13px}.eyebrow{color:var(--river-brand);font-size:12px;font-weight:700;letter-spacing:.08em}.backup-card{margin-top:18px;scroll-margin-top:82px}.card-heading{width:100%}
+.page-heading,.panel-title,.toolbar{display:flex;align-items:center;justify-content:space-between;gap:16px}.page-heading{margin-bottom:18px}.page-heading h1{margin:6px 0;font-size:26px}.page-heading p,.toolbar{margin:0;color:#86909c;font-size:13px}.eyebrow{color:#165dff;font-size:12px;font-weight:700;letter-spacing:.08em}.toolbar{justify-content:flex-start;margin-bottom:16px}.permission-tip{margin-bottom:16px}.permission-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:12px}.permission-grid :deep(.el-checkbox){height:auto;margin:0;padding:12px;display:flex;align-items:flex-start}.permission-grid small{display:block;color:#86909c;margin-left:8px}@media(max-width:700px){.page-heading{align-items:flex-start;flex-direction:column}.permission-grid{grid-template-columns:1fr}}
 </style>

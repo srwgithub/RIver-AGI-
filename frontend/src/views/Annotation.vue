@@ -1,6 +1,9 @@
 <template>
   <div class="annotation">
-    <h2>数据标注</h2>
+    <div class="page-title-row">
+      <h2>数据标注与质量工作台</h2>
+      <el-button @click="$router.push('/annotation-quality/rules')">规则配置后台</el-button>
+    </div>
     
     <el-row :gutter="20" style="margin-bottom: 20px;">
       <el-col :span="8">
@@ -50,34 +53,6 @@
       </el-row>
     </el-card>
 
-    <el-card class="rules-card">
-      <template #header><div class="quality-header"><span>质量规则配置后台</span><el-button type="primary" size="small" @click="openRule">新增规则</el-button></div></template>
-      <el-table :data="rules" size="small" stripe>
-        <el-table-column prop="name" label="规则名称" />
-        <el-table-column prop="code" label="编码" />
-        <el-table-column prop="ruleType" label="规则类型" />
-        <el-table-column label="阈值"><template #default="s">{{ s.row.threshold == null ? '-' : s.row.threshold }}</template></el-table-column>
-        <el-table-column label="状态"><template #default="s"><el-switch v-model="s.row.enabled" @change="toggleRule(s.row)" /></template></el-table-column>
-        <el-table-column prop="priority" label="优先级" />
-        <el-table-column label="操作" width="150"><template #default="s"><el-button link type="primary" @click="openRule(s.row)">编辑</el-button><el-button link type="danger" @click="removeRule(s.row)">删除</el-button></template></el-table-column>
-      </el-table>
-      <div class="rule-tip">启用规则会参与“自动校验与纠偏”，优先级数字越小越先执行。</div>
-    </el-card>
-
-    <el-dialog v-model="ruleDialog" :title="editingRule.id ? '编辑质量规则' : '新增质量规则'" width="520px">
-      <el-form :model="editingRule" label-width="100px">
-        <el-form-item label="规则名称"><el-input v-model="editingRule.name" /></el-form-item>
-        <el-form-item label="规则编码"><el-input v-model="editingRule.code" :disabled="!!editingRule.id" placeholder="如 MIN_CONFIDENCE" /></el-form-item>
-        <el-form-item label="规则类型"><el-select v-model="editingRule.ruleType" style="width: 100%"><el-option label="最低置信度" value="MIN_CONFIDENCE" /><el-option label="标签合法性" value="LABEL_IN_SCHEMA" /><el-option label="正则校验" value="REGEX" /></el-select></el-form-item>
-        <el-form-item label="阈值"><el-input-number v-model="editingRule.threshold" :min="0" :max="1" :step="0.05" /></el-form-item>
-        <el-form-item label="处理动作"><el-select v-model="editingRule.action"><el-option label="进入复核" value="REVIEW" /><el-option label="阻止发布" value="BLOCK" /></el-select></el-form-item>
-        <el-form-item label="优先级"><el-input-number v-model="editingRule.priority" :min="1" :max="999" /></el-form-item>
-        <el-form-item label="说明"><el-input v-model="editingRule.description" type="textarea" /></el-form-item>
-        <el-form-item label="启用"><el-switch v-model="editingRule.enabled" /></el-form-item>
-      </el-form>
-      <template #footer><el-button @click="ruleDialog = false">取消</el-button><el-button type="primary" @click="saveRule">保存</el-button></template>
-    </el-dialog>
-    
     <el-card>
       <template #header>
         <span>标注列表</span>
@@ -127,8 +102,10 @@
 
 <script setup>
 import { ref, computed, onMounted, watch } from 'vue'
+import { useRoute } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import request from '../utils/request'
+import { getActiveDatasetId, setActiveDatasetId } from '../utils/workspaceSync'
 
 const datasets = ref([])
 const labelSchemas = ref([])
@@ -140,12 +117,10 @@ const labels = ref([])
 const qualityMetrics = ref(null)
 const qualityReport = ref(null)
 const performance = ref([])
-const rules = ref([])
-const ruleDialog = ref(false)
-const editingRule = ref({ name: '', code: '', ruleType: 'MIN_CONFIDENCE', threshold: 0.7, action: 'REVIEW', priority: 100, enabled: true, description: '' })
 const loading = ref(false)
 const qualityPassed = computed(() => Boolean(qualityMetrics.value?.publishable))
 const percent = value => value == null ? '-' : `${(Number(value) * 100).toFixed(1)}%`
+const route = useRoute()
 
 onMounted(async () => {
   try {
@@ -163,7 +138,28 @@ onMounted(async () => {
     console.error('加载标签体系失败:', e)
     labelSchemas.value = []
   }
-  await loadRules()
+
+    const activeId = getActiveDatasetId()
+    const preferred = datasets.value.find(d => String(d.id) === String(activeId) && d.status === 'PARSED') || datasets.value.find(d => d.status === 'PARSED')
+    if (preferred && !route.query.collectionTaskId) {
+      selectedDataset.value = preferred.id
+      setActiveDatasetId(preferred.id)
+      if (labelSchemas.value.length) selectedSchema.value = labelSchemas.value[0].id
+      const response = await request.get('/v1/annotation-tasks?page=1&size=100')
+      const existing = (response.records || []).find(item => String(item.datasetId) === String(preferred.id) && item.status !== 'CANCELLED')
+      if (existing) { task.value = existing; await loadTaskData() }
+    }
+    const collectionTaskId = route.query.collectionTaskId
+  if (collectionTaskId) {
+    try {
+      const collectionTask = await request.get(`/v1/collection-tasks/${collectionTaskId}`)
+      if (collectionTask.datasetId) selectedDataset.value = collectionTask.datasetId
+      if (collectionTask.labelSchemaId) selectedSchema.value = collectionTask.labelSchemaId
+      await openCollectionTask(collectionTask)
+    } catch (e) {
+      ElMessage.error('待标注任务自动处理失败：' + (e.message || '未知错误'))
+    }
+  }
 })
 
 watch(selectedSchema, async value => {
@@ -179,15 +175,49 @@ const createTask = async () => {
     task.value = await request.post('/v1/annotation-tasks', {
       name: '数据标注任务', datasetId: selectedDataset.value, labelSchemaId: selectedSchema.value
     })
-    await request.post(`/v1/annotation-tasks/${task.value.id}/pre-annotate`)
-    task.value = await request.get(`/v1/annotation-tasks/${task.value.id}`)
-    annotations.value = await request.get(`/v1/annotation-tasks/${task.value.id}/annotations`)
-    await loadQuality()
-    await loadPerformance()
+    await loadTaskData()
     ElMessage.success('任务创建并完成预标注')
   } catch (e) {
     ElMessage.error('创建标注任务失败：' + (e.message || '未知错误'))
   }
+}
+
+const loadTaskData = async () => {
+  if (!task.value) return
+  task.value = await request.get(`/v1/annotation-tasks/${task.value.id}`)
+  annotations.value = await request.get(`/v1/annotation-tasks/${task.value.id}/annotations`)
+  await loadQuality()
+  await loadPerformance()
+}
+
+const openCollectionTask = async collectionTask => {
+  if (!collectionTask.datasetId || !collectionTask.labelSchemaId) {
+    ElMessage.warning('该采集任务缺少数据集或标签体系，无法自动进入标注')
+    return
+  }
+
+  const response = await request.get('/v1/annotation-tasks?page=1&size=100')
+  const tasks = response.records || []
+  const existing = tasks.find(item =>
+    Number(item.datasetId) === Number(collectionTask.datasetId) &&
+    Number(item.labelSchemaId) === Number(collectionTask.labelSchemaId) &&
+    item.status !== 'CANCELLED'
+  )
+
+  if (existing) {
+    task.value = existing
+    await loadTaskData()
+    ElMessage.success('已自动加载对应标注任务')
+    return
+  }
+
+  task.value = await request.post('/v1/annotation-tasks', {
+    name: collectionTask.name ? `${collectionTask.name} - 标注任务` : '数据标注任务',
+    datasetId: collectionTask.datasetId,
+    labelSchemaId: collectionTask.labelSchemaId
+  })
+  await loadTaskData()
+  ElMessage.success('已自动创建标注任务并完成预标注')
 }
 
 const loadQuality = async () => {
@@ -200,27 +230,6 @@ const loadPerformance = async () => {
   if (task.value) performance.value = await request.get(`/v1/annotation-tasks/${task.value.id}/annotator-performance`)
 }
 
-const loadRules = async () => {
-  try { rules.value = await request.get('/v1/annotation-quality-rules') } catch (e) { ElMessage.error('加载质量规则失败：' + e.message) }
-}
-
-const openRule = rule => {
-  editingRule.value = rule ? { ...rule } : { name: '', code: '', ruleType: 'MIN_CONFIDENCE', threshold: 0.7, action: 'REVIEW', priority: 100, enabled: true, description: '' }
-  ruleDialog.value = true
-}
-
-const saveRule = async () => {
-  try { await request.post('/v1/annotation-quality-rules', editingRule.value); ruleDialog.value = false; await loadRules(); ElMessage.success('质量规则已保存') } catch (e) { ElMessage.error('保存规则失败：' + e.message) }
-}
-
-const toggleRule = async rule => {
-  try { await request.post('/v1/annotation-quality-rules', rule); ElMessage.success(rule.enabled ? '规则已启用' : '规则已停用') } catch (e) { rule.enabled = !rule.enabled; ElMessage.error('更新规则状态失败：' + e.message) }
-}
-
-const removeRule = async rule => {
-  try { await ElMessageBox.confirm(`确认删除规则“${rule.name}”吗？`, '删除规则', { type: 'warning' }); await request.delete(`/v1/annotation-quality-rules/${rule.id}`); await loadRules(); ElMessage.success('规则已删除') } catch (e) { if (e !== 'cancel') ElMessage.error(e.message || '删除失败') }
-}
-
 const autoValidate = async () => {
   loading.value = true
   try { qualityReport.value = await request.post(`/v1/annotation-tasks/${task.value.id}/auto-validate`); await reloadTask(); ElMessage.success(`校验完成，${qualityReport.value.routedToReview} 条进入复核`) } catch (e) { ElMessage.error(e.message) } finally { loading.value = false }
@@ -228,7 +237,7 @@ const autoValidate = async () => {
 
 const runSampling = async () => {
   loading.value = true
-  try { qualityReport.value = await request.post(`/v1/annotation-tasks/${task.value.id}/quality-sampling`, { sampleRate: 0.1 }); await reloadTask(); ElMessage.success('质量抽检完成') } catch (e) { ElMessage.error(e.message) } finally { loading.value = false }
+  try { qualityReport.value = await request.post(`/v1/annotation-tasks/${task.value.id}/quality-sampling`, { sampleRate: 0.1 }); await reloadTask(); ElMessage.success(qualityReport.value?.pendingReviewCount ? `抽检完成，${qualityReport.value.pendingReviewCount} 条进入人工审核` : '抽检人工结论已保存') } catch (e) { ElMessage.error(e.message) } finally { loading.value = false }
 }
 
 const runConsistency = async () => {
@@ -274,8 +283,7 @@ const updateAnnotation = async (item) => {
 }
 
 .quality-card,
-.performance-card,
-.rules-card {
+.performance-card {
   margin-bottom: 20px;
 }
 
@@ -284,6 +292,8 @@ const updateAnnotation = async (item) => {
   align-items: center;
   justify-content: space-between;
 }
+
+.page-title-row { display:flex; align-items:center; justify-content:space-between; gap:16px; margin-bottom:20px; }
 
 .quality-actions {
   display: flex;

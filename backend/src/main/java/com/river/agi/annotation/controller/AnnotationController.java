@@ -4,6 +4,7 @@ import com.river.agi.annotation.entity.Annotation;
 import com.river.agi.annotation.entity.AnnotationTask;
 import com.river.agi.annotation.entity.LabelSchema;
 import com.river.agi.annotation.entity.AnnotationQualityRule;
+import com.river.agi.annotation.entity.AnnotationHistory;
 import com.river.agi.annotation.service.AnnotationService;
 import com.river.agi.common.ApiResponse;
 import com.river.agi.common.PageResult;
@@ -25,19 +26,19 @@ public class AnnotationController {
     
     private final AnnotationService annotationService;
 
-    @GetMapping("/annotation-quality-rules")
+    @GetMapping({"/annotation-quality-rules", "/annotation-quality/rules"})
     @Operation(summary = "List annotation quality rules", description = "List configurable annotation validation rules")
     public ApiResponse<List<AnnotationQualityRule>> getQualityRules() {
         return ApiResponse.ok(annotationService.getQualityRules());
     }
 
-    @PostMapping("/annotation-quality-rules")
+    @PostMapping({"/annotation-quality-rules", "/annotation-quality/rules"})
     @Operation(summary = "Save annotation quality rule", description = "Create or update an annotation quality rule")
     public ApiResponse<AnnotationQualityRule> saveQualityRule(@RequestBody AnnotationQualityRule rule) {
         return ApiResponse.ok(annotationService.saveQualityRule(rule));
     }
 
-    @DeleteMapping("/annotation-quality-rules/{id}")
+    @DeleteMapping({"/annotation-quality-rules/{id}", "/annotation-quality/rules/{id}"})
     public ApiResponse<Void> deleteQualityRule(@PathVariable Long id) {
         annotationService.deleteQualityRule(id);
         return ApiResponse.ok(null);
@@ -135,6 +136,19 @@ public class AnnotationController {
     public ApiResponse<List<Annotation>> getAnnotations(@Parameter(description = "Task ID") @PathVariable Long taskId) {
         return ApiResponse.ok(annotationService.getAnnotations(taskId));
     }
+
+    @PostMapping("/annotation-tasks/{id}/export")
+    @Operation(summary = "Export annotated dataset", description = "Export source rows with final annotation fields")
+    public ApiResponse<Map<String, Object>> exportAnnotations(@PathVariable Long id, Authentication authentication) {
+        return ApiResponse.ok(annotationService.exportAnnotations(id, authentication));
+    }
+
+
+    @GetMapping("/annotation-tasks/{taskId}/history")
+    @Operation(summary = "Get annotation history", description = "Get persistent multi-round, review and arbitration history")
+    public ApiResponse<List<AnnotationHistory>> getAnnotationHistory(@PathVariable Long taskId) {
+        return ApiResponse.ok(annotationService.getAnnotationHistory(taskId));
+    }
     
     @PostMapping("/annotations/{id}/submit")
     @Operation(summary = "Submit annotation", description = "Submit an annotation")
@@ -157,10 +171,14 @@ public class AnnotationController {
             @Parameter(description = "Annotation ID") @PathVariable Long id,
             @RequestBody Map<String, Object> request,
             Authentication authentication) {
+        Object approvedValue = request.get("approved");
+        if (!(approvedValue instanceof Boolean)) {
+            throw new IllegalArgumentException("approved 必须是布尔值");
+        }
         return ApiResponse.ok(annotationService.reviewAnnotation(
                 id,
                 (String) request.get("reviewComment"),
-                (Boolean) request.get("approved"),
+                (Boolean) approvedValue,
                 authentication
         ));
     }
@@ -206,10 +224,17 @@ public class AnnotationController {
     @Operation(summary = "Quality sampling", description = "Perform quality sampling on annotations")
     public ApiResponse<Map<String, Object>> performQualitySampling(
             @Parameter(description = "Task ID") @PathVariable Long id,
-            @RequestBody Map<String, Double> request,
+            @RequestBody Map<String, Object> request,
             Authentication authentication) {
-        double sampleRate = request.getOrDefault("sampleRate", 0.1).doubleValue();
-        return ApiResponse.ok(annotationService.performQualitySampling(id, sampleRate, authentication));
+        Object rawRate = request.getOrDefault("sampleRate", 0.1);
+        double sampleRate = rawRate instanceof Number number
+                ? number.doubleValue() : Double.parseDouble(String.valueOf(rawRate));
+        Object rawDecisions = request.get("reviewDecisions");
+        Map<String, Object> reviewDecisions = rawDecisions instanceof Map<?, ?> map
+                ? map.entrySet().stream().collect(java.util.stream.Collectors.toMap(
+                        entry -> String.valueOf(entry.getKey()), Map.Entry::getValue))
+                : Map.of();
+        return ApiResponse.ok(annotationService.performQualitySampling(id, sampleRate, reviewDecisions, authentication));
     }
     
     // Consistency check endpoint

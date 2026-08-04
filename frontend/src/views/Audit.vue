@@ -15,7 +15,7 @@
     </el-row>
     
     <el-card>
-      <el-table :data="logs" style="width: 100%">
+      <el-table :data="logs" style="width: 100%" stripe highlight-current-row @row-click="showDetail">
         <el-table-column prop="id" label="ID" width="80" />
         <el-table-column prop="actionType" label="操作类型" />
         <el-table-column prop="resourceType" label="资源类型" />
@@ -32,7 +32,12 @@
         <el-table-column prop="createdAt" label="操作时间" />
         <el-table-column prop="requestPath" label="请求路径" show-overflow-tooltip />
         <el-table-column prop="durationMs" label="耗时(ms)" width="100" />
-        <el-table-column prop="operationDetails" label="详情" show-overflow-tooltip />
+        <el-table-column prop="operationDetails" label="操作内容" min-width="180" show-overflow-tooltip />
+        <el-table-column label="审计追溯" width="110" fixed="right">
+          <template #default="scope">
+            <el-button type="primary" link @click.stop="showDetail(scope.row)">查看详情</el-button>
+          </template>
+        </el-table-column>
       </el-table>
       <el-pagination 
         style="margin-top: 20px; text-align: right;"
@@ -42,6 +47,20 @@
         @current-change="loadLogs"
       />
     </el-card>
+    <el-drawer v-model="detailVisible" title="审计追溯详情" size="460px">
+      <el-descriptions v-if="selectedLog" :column="1" border>
+        <el-descriptions-item label="操作类型">{{ selectedLog.actionType || '-' }}</el-descriptions-item>
+        <el-descriptions-item label="资源模块">{{ selectedLog.resourceType || '-' }}</el-descriptions-item>
+        <el-descriptions-item label="资源名称">{{ selectedLog.resourceName || '-' }}</el-descriptions-item>
+        <el-descriptions-item label="操作人">{{ selectedLog.username || '-' }}（用户 ID：{{ selectedLog.userId || '-' }}）</el-descriptions-item>
+        <el-descriptions-item label="IP 地址">{{ selectedLog.ipAddress || '-' }}</el-descriptions-item>
+        <el-descriptions-item label="设备信息">{{ selectedLog.userAgent || '-' }}</el-descriptions-item>
+        <el-descriptions-item label="请求信息">{{ selectedLog.requestMethod || '-' }} {{ selectedLog.requestPath || '-' }}</el-descriptions-item>
+        <el-descriptions-item label="操作结果">{{ selectedLog.result || '-' }}</el-descriptions-item>
+        <el-descriptions-item label="操作时间">{{ selectedLog.createdAt || '-' }}</el-descriptions-item>
+        <el-descriptions-item label="完整操作内容"><pre>{{ selectedLog.operationDetails || '暂无详细内容' }}</pre></el-descriptions-item>
+      </el-descriptions>
+    </el-drawer>
   </div>
 </template>
 
@@ -55,6 +74,13 @@ const size = ref(20)
 const total = ref(0)
 const userId = ref('')
 const resourceType = ref('')
+const selectedLog = ref(null)
+const detailVisible = ref(false)
+
+const showDetail = row => {
+  selectedLog.value = row
+  detailVisible.value = true
+}
 
 onMounted(() => {
   loadLogs()
@@ -94,4 +120,5 @@ const exportLogs = async () => {
   margin-bottom: 20px;
 }
 .audit-heading { display:flex; align-items:center; justify-content:space-between; margin-bottom:20px; }
+pre { white-space: pre-wrap; word-break: break-all; margin: 0; }
 </style>

@@ -60,7 +60,11 @@ public class ChartController {
     
     @GetMapping("/configs/{datasetId}")
     @Operation(summary = "Get chart configs", description = "Get saved chart configurations for a dataset")
-    public ApiResponse<List<ChartConfig>> getChartConfigs(@Parameter(description = "Dataset ID") @PathVariable Long datasetId) {
+    public ApiResponse<List<ChartConfig>> getChartConfigs(@Parameter(description = "Dataset ID") @PathVariable Long datasetId,
+                                                          Authentication authentication) {
+        if (authentication != null) {
+            accessValidator.validateDatasetAccess(datasetId, securityUtils.getCurrentUserId(authentication));
+        }
         return ApiResponse.ok(chartService.getChartConfigs(datasetId));
     }
     
@@ -86,7 +90,11 @@ public class ChartController {
     
     @GetMapping("/reports/{id}")
     @Operation(summary = "Get report", description = "Get report by ID")
-    public ApiResponse<Report> getReport(@Parameter(description = "Report ID") @PathVariable Long id) {
+    public ApiResponse<Report> getReport(@Parameter(description = "Report ID") @PathVariable Long id,
+                                        Authentication authentication) {
+        if (authentication != null) {
+            accessValidator.validateReportAccess(id, securityUtils.getCurrentUserId(authentication));
+        }
         return ApiResponse.ok(chartService.getReport(id));
     }
     

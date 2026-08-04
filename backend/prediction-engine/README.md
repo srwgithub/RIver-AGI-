@@ -33,20 +33,23 @@ prediction-engine/
 ### 1. 安装依赖
 
 ```bash
-cd prediction-engine
-pip install -r requirements.txt
+cd backend/prediction-engine
+python3 -m venv .venv
+source .venv/bin/activate
+python -m pip install -r requirements.txt
+python -m pip install -r requirements-test.txt
 ```
 
 ### 2. 启动服务
 
 ```bash
-python app.py
+PORT=5001 HOST=127.0.0.1 .venv/bin/python -u app.py
 ```
 
-服务默认运行在 `http://0.0.0.0:5000`，可通过环境变量配置：
+Java 后端固定连接 Python 引擎的 `http://127.0.0.1:5001`。也可以通过环境变量配置：
 
 ```bash
-HOST=0.0.0.0 PORT=5000 DEBUG=true python app.py
+HOST=0.0.0.0 PORT=5001 DEBUG=true .venv/bin/python app.py
 ```
 
 ### 3. API 端点
@@ -66,8 +69,8 @@ Content-Type: application/json
 {
   "algorithm": "lstm",
   "task_type": "regression",
-  "dataset": [[1.0], [2.0], [3.0], ...],
-  "target": [2.0, 3.0, 4.0, ...],
+    "X": [[1.0], [2.0], [3.0], ...],
+    "y": [2.0, 3.0, 4.0, ...],
   "params": {
     "hidden_size": 64,
     "num_layers": 2,
@@ -85,7 +88,7 @@ Content-Type: application/json
 
 {
   "model_id": "xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx",
-  "dataset": [[1.0], [2.0], [3.0]]
+    "X": [[1.0], [2.0], [3.0]]
 }
 ```
 
@@ -127,8 +130,8 @@ Content-Type: application/json
 {
   "algorithm": "random_forest",
   "task_type": "regression",
-  "dataset": [[1.0, 2.0], [3.0, 4.0], ...],
-  "target": [1.0, 2.0, ...],
+    "X": [[1.0, 2.0], [3.0, 4.0], ...],
+    "y": [1.0, 2.0, ...],
   "n_splits": 5
 }
 ```
@@ -181,7 +184,7 @@ Map<String, Object> trainRequest = Map.of(
 );
 
 ResponseEntity<Map> response = restTemplate.postForEntity(
-    "http://localhost:5000/api/v1/predictions/train",
+    "http://127.0.0.1:5001/api/v1/predictions/train",
     trainRequest,
     Map.class
 );
@@ -194,7 +197,7 @@ String modelId = (String) response.getBody().get("data").get("model_id");
 | 变量 | 默认值 | 说明 |
 |------|--------|------|
 | `HOST` | `0.0.0.0` | 服务监听地址 |
-| `PORT` | `5000` | 服务端口 |
+| `PORT` | `5001` | 服务端口，Java 集成环境固定使用 5001 |
 | `DEBUG` | `false` | 调试模式 |
 | `MODEL_STORAGE_PATH` | `./saved_models` | 模型存储路径 |
 

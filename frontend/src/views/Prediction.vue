@@ -337,9 +337,10 @@ const renderCharts = () => {
   
   if (importanceChartRef.value) {
     const chart = echarts.init(importanceChartRef.value)
-    const featureNames = modelMetrics.value?.featureImportance?.map(f => f.name) || ['趋势', '天气', '假期', '促销', '价格']
-    const importanceValues = modelMetrics.value?.featureImportance?.map(f => f.value) || [5, 15, 20, 25, 35]
+    const featureNames = modelMetrics.value?.featureImportance?.map(f => f.name) || []
+    const importanceValues = modelMetrics.value?.featureImportance?.map(f => f.value) || []
     chart.setOption({
+      title: featureNames.length ? undefined : { text: '后端未返回特征重要性', left: 'center', top: 'middle', textStyle: { color: '#94a3b8', fontSize: 13, fontWeight: 400 } },
       tooltip: { trigger: 'axis', axisPointer: { type: 'shadow' } },
       xAxis: { type: 'value' },
       yAxis: { type: 'category', data: featureNames },
@@ -373,6 +374,18 @@ const retrainPrediction = async () => {
 
 .evaluation-center {
   margin-bottom: 20px;
+}
+
+.model-actions {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-bottom: 14px;
+}
+
+.model-select {
+  width: 220px;
 }
 
 .center-header {

@@ -18,6 +18,7 @@ import com.river.agi.prediction.service.DeepLearningPredictionClient.DeepLearnin
 import com.river.agi.prediction.service.DeepLearningPredictionClient.DeepLearningAlgorithm;
 import com.river.agi.prediction.service.DeepLearningPredictionClient.DeepLearningCrossValidateRequest;
 import com.river.agi.prediction.mapper.ModelVersionMapper;
+import com.river.agi.prediction.mapper.PredictionEvaluationMapper;
 import com.river.agi.security.entity.AuditLog;
 import com.river.agi.security.mapper.AuditLogMapper;
 import com.river.agi.dataset.service.DatasetDataReaderService;
@@ -33,6 +34,8 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.*;
+import com.fasterxml.jackson.core.type.TypeReference;
+import com.fasterxml.jackson.databind.ObjectMapper;
 
 import java.time.LocalDateTime;
 import java.util.LinkedHashMap;
@@ -40,6 +43,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.Set;
 
 @RestController
 @RequestMapping({"/api/v1/predictions", "/v1/predictions"})
@@ -63,6 +67,15 @@ public class PredictionController {
 
     @Autowired
     private ModelVersionMapper modelVersionMapper;
+
+    @Autowired
+    private PredictionEvaluationMapper predictionEvaluationMapper;
+
+    @Autowired
+    private com.river.agi.prediction.mapper.PredictionTaskMapper predictionTaskMapper;
+
+    @Autowired
+    private ObjectMapper objectMapper;
 
     @Autowired(required = false)
     private AsyncTaskService asyncTaskService;
@@ -93,6 +106,20 @@ public class PredictionController {
     @Operation(summary = "Run prediction", description = "Run a pending prediction task")
     public ApiResponse<PredictionTask> runPrediction(@Parameter(description = "Prediction ID") @PathVariable Long id) {
         return ApiResponse.ok(predictionService.runPrediction(id));
+    }
+
+    @GetMapping("/health")
+    @Operation(summary = "Prediction service health", description = "Check Java prediction service and Python engine availability")
+    public ApiResponse<Map<String, Object>> health() {
+        Map<String, Object> health = new LinkedHashMap<>();
+        health.put("status", "UP");
+        health.put("java", true);
+        health.put("deepLearningEnabled", dlClient != null && dlClient.isDlEngineEnabled());
+        health.put("deepLearningReachable", dlClient != null && dlClient.isDlEngineEnabled()
+                && dlClient.isServiceAvailable());
+        health.put("engineUrl", dlClient != null && dlClient.isDlEngineEnabled()
+                ? dlClient.getEngineUrl() : "disabled");
+        return ApiResponse.ok(health);
     }
     
     @GetMapping("/{id}")
@@ -147,6 +174,20 @@ public class PredictionController {
         return ApiResponse.ok(predictionService.getModelVersions(modelName));
     }
 
+    @GetMapping("/evaluations")
+    @Operation(summary = "List prediction evaluations", description = "Get recent prediction evaluation records for the evaluation center")
+    public ApiResponse<List<PredictionEvaluation>> getPredictionEvaluations(
+            @RequestParam(required = false) Long taskId,
+            @RequestParam(defaultValue = "100") int limit) {
+        LambdaQueryWrapper<PredictionEvaluation> query = new LambdaQueryWrapper<PredictionEvaluation>()
+                .orderByDesc(PredictionEvaluation::getCreatedAt)
+                .last("LIMIT " + Math.max(1, Math.min(limit, 500)));
+        if (taskId != null) {
+            query.eq(PredictionEvaluation::getTaskId, taskId);
+        }
+        return ApiResponse.ok(predictionEvaluationMapper.selectList(query));
+    }
+
     @PostMapping("/models/{id}/set-production")
     @Operation(summary = "Set production model", description = "Set a model version as production and demote other versions")
     public ApiResponse<ModelVersion> setProductionModel(@PathVariable Long id) {
@@ -198,6 +239,53 @@ public class PredictionController {
         return ApiResponse.ok(enhancedPredictionService.getEvaluationHistory(id));
     }
 
+    @GetMapping("/{id}/monitoring-config")
+    @Operation(summary = "Get model monitoring configuration", description = "Get persisted alert and retraining thresholds for a prediction task")
+    public ApiResponse<Map<String, Object>> getMonitoringConfig(@PathVariable Long id) {
+        PredictionTask task = predictionService.getPredictionTask(id);
+        return ApiResponse.ok(readMonitoringConfig(task));
+    }
+
+    @PutMapping("/{id}/monitoring-config")
+    @Operation(summary = "Save model monitoring configuration", description = "Persist alert and retraining thresholds with the prediction task")
+    public ApiResponse<Map<String, Object>> saveMonitoringConfig(@PathVariable Long id, @RequestBody Map<String, Object> config) {
+        PredictionTask task = predictionService.getPredictionTask(id);
+        Map<String, Object> parameters = new LinkedHashMap<>();
+        if (task.getParametersJson() != null && !task.getParametersJson().isBlank()) {
+            try {
+                parameters.putAll(objectMapper.readValue(task.getParametersJson(), new TypeReference<Map<String, Object>>() {}));
+            } catch (Exception ignored) {
+                // Legacy tasks may contain a non-object parameter payload; retain it under a separate key.
+                parameters.put("legacyParameters", task.getParametersJson());
+            }
+        }
+        parameters.put("monitoringConfig", config == null ? Map.of() : config);
+        try {
+            task.setParametersJson(objectMapper.writeValueAsString(parameters));
+        } catch (Exception e) {
+            throw new BusinessException("监控配置保存失败: " + e.getMessage());
+        }
+        task.setUpdatedAt(LocalDateTime.now());
+        predictionTaskMapper.updateById(task);
+        return ApiResponse.ok(readMonitoringConfig(task));
+    }
+
+    private Map<String, Object> readMonitoringConfig(PredictionTask task) {
+        if (task.getParametersJson() == null || task.getParametersJson().isBlank()) return new LinkedHashMap<>();
+        try {
+            Map<String, Object> parameters = objectMapper.readValue(task.getParametersJson(), new TypeReference<Map<String, Object>>() {});
+            Object config = parameters.get("monitoringConfig");
+            if (config instanceof Map<?, ?> map) {
+                Map<String, Object> result = new LinkedHashMap<>();
+                map.forEach((key, value) -> result.put(String.valueOf(key), value));
+                return result;
+            }
+        } catch (Exception ignored) {
+            // Return an empty config for legacy or malformed optional parameters.
+        }
+        return new LinkedHashMap<>();
+    }
+
     @PostMapping("/{id}/evaluate")
     @Operation(summary = "Evaluate prediction", description = "Evaluate current model and record a traceable snapshot")
     public ApiResponse<PredictionEvaluation> evaluatePrediction(@PathVariable Long id) {
@@ -210,6 +298,13 @@ public class PredictionController {
     public ApiResponse<Map<String, Object>> autoTune(@PathVariable Long id) {
         if (enhancedPredictionService == null) throw new BusinessException("Enhanced prediction service not available");
         return ApiResponse.ok(enhancedPredictionService.autoTune(id));
+    }
+
+    @PostMapping("/{id}/manual-tune")
+    @Operation(summary = "Manually tune model", description = "Apply user supplied tuning parameters and persist a new model version")
+    public ApiResponse<Map<String, Object>> manualTune(@PathVariable Long id, @RequestBody(required = false) Map<String, Object> parameters) {
+        if (enhancedPredictionService == null) throw new BusinessException("Enhanced prediction service not available");
+        return ApiResponse.ok(enhancedPredictionService.manualTune(id, parameters));
     }
     
     @GetMapping("/{id}/comparison")
@@ -277,13 +372,9 @@ public class PredictionController {
     @PostMapping("/{id}/auto-retrain")
     @Operation(summary = "Auto retrain on bias", description = "Automatically retrain if bias is detected")
     public ApiResponse<Map<String, Object>> autoRetrainOnBias(
-            @Parameter(description = "Task ID") @PathVariable Long id) {
+        @Parameter(description = "Task ID") @PathVariable Long id) {
         if (enhancedPredictionService != null) {
-            enhancedPredictionService.autoRetrainOnBias(id);
-            Map<String, Object> result = new LinkedHashMap<>();
-            result.put("taskId", id);
-            result.put("message", "Auto-retrain triggered if bias detected");
-            return ApiResponse.ok(result);
+            return ApiResponse.ok(enhancedPredictionService.autoRetrainOnBias(id));
         }
         throw new BusinessException("Enhanced prediction service not available");
     }
@@ -476,7 +567,8 @@ public class PredictionController {
         boolean reachable = enabled && dlClient.isServiceAvailable();
         status.put("enabled", enabled);
         status.put("reachable", reachable);
-        status.put("engineUrl", dlClient != null ? dlClient.isDlEngineEnabled() ? "http://localhost:5000" : "disabled" : "not_configured");
+        // Expose the configured endpoint so the UI reflects the actual engine port.
+        status.put("engineUrl", dlClient != null && dlClient.isDlEngineEnabled() ? dlClient.getEngineUrl() : "disabled");
         return ApiResponse.ok(status);
     }
 
@@ -493,7 +585,42 @@ public class PredictionController {
         String errorMessage = null;
         String finishedAt = null;
 
-        if (asyncTaskService != null) {
+        // The prediction task is the source of truth for the business job.
+        // AsyncTask may be absent or stale because the real worker is submitted
+        // through the prediction executor. Always reconcile terminal task state
+        // before returning the polling response.
+        PredictionTask predictionTask = predictionService.getPredictionTask(taskId);
+        boolean businessTerminal = predictionTask != null && predictionTask.getStatus() != null
+                && Set.of("COMPLETED", "FAILED", "CANCELLED")
+                .contains(predictionTask.getStatus().toUpperCase());
+        if (predictionTask != null) {
+            String businessStatus = predictionTask.getStatus();
+            if ("COMPLETED".equalsIgnoreCase(businessStatus)
+                    || "FAILED".equalsIgnoreCase(businessStatus)
+                    || "CANCELLED".equalsIgnoreCase(businessStatus)) {
+                status = businessStatus.toUpperCase();
+                progress = "COMPLETED".equals(status) ? 100 : progress;
+                errorMessage = predictionTask.getErrorMessage();
+                finishedAt = predictionTask.getUpdatedAt() == null
+                        ? null : predictionTask.getUpdatedAt().toString();
+                if (predictionTask.getDlModelId() != null) {
+                    modelId = predictionTask.getDlModelId();
+                }
+                if (predictionTask.getModelVersionId() != null) {
+                    try {
+                        ModelVersion version = modelVersionMapper.selectById(predictionTask.getModelVersionId());
+                        if (version != null) {
+                            if (modelId == null && version.getModelPath() != null) {
+                                modelId = version.getModelPath();
+                            }
+                            logs.add("模型版本 " + version.getId() + " 已持久化");
+                        }
+                    } catch (Exception ignored) { }
+                }
+            }
+        }
+
+        if (asyncTaskService != null && !businessTerminal) {
             try {
                 List<AsyncTask> tasks = asyncTaskService.getTasksByResource("MODEL_TRAIN", taskId);
                 if (!tasks.isEmpty()) {
@@ -531,11 +658,8 @@ public class PredictionController {
             } catch (Exception ignored) {}
         }
 
-        if ("COMPLETED".equals(status) && modelId == null) {
-            PredictionTask predTask = predictionService.getPredictionTask(taskId);
-            if (predTask != null && predTask.getDlModelId() != null) {
-                modelId = predTask.getDlModelId();
-            }
+        if ("COMPLETED".equals(status) && modelId == null && predictionTask != null) {
+            modelId = predictionTask.getDlModelId();
         }
 
         result.put("status", status);

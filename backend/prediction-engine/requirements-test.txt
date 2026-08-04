@@ -1,0 +1,3 @@
+# Persistent local QA dependencies for Python API and browser tests.
+pytest==8.3.5
+selenium==4.10.0

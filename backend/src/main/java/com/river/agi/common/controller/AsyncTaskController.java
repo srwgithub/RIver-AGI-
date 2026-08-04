@@ -26,8 +26,10 @@ public class AsyncTaskController {
     @GetMapping("/{id}")
     @Operation(summary = "Get task status", description = "Get async task status by ID")
     public ApiResponse<Map<String, Object>> getTaskStatus(
-            @Parameter(description = "Task ID") @PathVariable Long id) {
-        return ApiResponse.ok(asyncTaskService.getTaskProgress(id));
+            @Parameter(description = "Task ID") @PathVariable Long id,
+            Authentication authentication) {
+        Long userId = securityUtils.getCurrentUserId(authentication);
+        return ApiResponse.ok(asyncTaskService.getTaskProgress(id, userId));
     }
     
     @GetMapping
@@ -36,8 +38,10 @@ public class AsyncTaskController {
             @Parameter(description = "Page number") @RequestParam(defaultValue = "1") int page,
             @Parameter(description = "Page size") @RequestParam(defaultValue = "10") int size,
             @Parameter(description = "Task status filter") @RequestParam(required = false) String status,
-            @Parameter(description = "Task type filter") @RequestParam(required = false) String taskType) {
-        return ApiResponse.ok(asyncTaskService.getTaskList(page, size, status, taskType));
+            @Parameter(description = "Task type filter") @RequestParam(required = false) String taskType,
+            Authentication authentication) {
+        Long userId = securityUtils.getCurrentUserId(authentication);
+        return ApiResponse.ok(asyncTaskService.getTaskList(page, size, status, taskType, userId));
     }
     
     @PostMapping("/{id}/cancel")
@@ -53,8 +57,10 @@ public class AsyncTaskController {
     @PostMapping("/{id}/retry")
     @Operation(summary = "Retry task", description = "Retry a failed task")
     public ApiResponse<Void> retryTask(
-            @Parameter(description = "Task ID") @PathVariable Long id) {
-        asyncTaskService.retryTask(id);
+            @Parameter(description = "Task ID") @PathVariable Long id,
+            Authentication authentication) {
+        Long userId = securityUtils.getCurrentUserId(authentication);
+        asyncTaskService.retryTask(id, userId);
         return ApiResponse.ok(null);
     }
 }

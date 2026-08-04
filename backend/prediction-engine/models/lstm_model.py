@@ -111,7 +111,9 @@ class LSTMModel:
         learning_rate = self.params.get("learning_rate", 0.001)
         epochs = self.params.get("epochs", 100)
         batch_size = self.params.get("batch_size", 32)
-        sequence_length = self.params.get("sequence_length", 10)
+        sequence_length = int(self.params.get("sequence_length", self.params.get("windowSize", 10)))
+        # Keep a validation split available even for small real-world uploads.
+        sequence_length = max(1, min(sequence_length, max(1, len(X) - 2)))
         patience = self.params.get("patience", 10)
 
         X_scaled, y = self._preprocess(X, y, fit_scaler=True)

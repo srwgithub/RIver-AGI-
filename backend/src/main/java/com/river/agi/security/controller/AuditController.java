@@ -13,6 +13,12 @@ import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import java.nio.charset.StandardCharsets;
+import java.time.LocalDate;
+import java.util.LinkedHashMap;
+import java.util.Map;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.SerializationFeature;
+import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
 
 @RestController
 @RequestMapping("/api/v1/audit")
@@ -29,14 +35,36 @@ public class AuditController {
             @Parameter(description = "Page number") @RequestParam(defaultValue = "1") int page,
             @Parameter(description = "Page size") @RequestParam(defaultValue = "20") int size,
             @Parameter(description = "User ID filter") @RequestParam(required = false) Long userId,
-            @Parameter(description = "Resource type filter") @RequestParam(required = false) String resourceType) {
-        return ApiResponse.ok(securityService.getAuditLogs(page, size, userId, resourceType));
+            @Parameter(description = "Resource type filter") @RequestParam(required = false) String resourceType,
+            @RequestParam(required = false) String actionType,
+            @RequestParam(required = false) LocalDate startDate,
+            @RequestParam(required = false) LocalDate endDate) {
+        return ApiResponse.ok(securityService.getAuditLogs(page, size, userId, resourceType, actionType, startDate, endDate));
     }
 
-    @GetMapping(value = "/logs/export", produces = "text/csv;charset=UTF-8")
+    @GetMapping("/compliance-summary")
+    public ApiResponse<Map<String, Object>> complianceSummary() {
+        return ApiResponse.ok(securityService.getComplianceSummary());
+    }
+
+    @GetMapping(value = "/compliance-report", produces = "application/json;charset=UTF-8")
+    public ResponseEntity<byte[]> complianceReport() throws Exception {
+        Map<String, Object> report = new LinkedHashMap<>();
+        report.put("reportName", "RIver AGI 数据安全合规审计报告");
+        report.put("standards", new String[]{"《数据安全法》", "《个人信息保护法》"});
+        report.put("generatedAt", java.time.LocalDateTime.now().toString());
+        report.put("summary", securityService.getComplianceSummary());
+        byte[] body = new ObjectMapper().registerModule(new JavaTimeModule())
+                .disable(SerializationFeature.WRITE_DATES_AS_TIMESTAMPS)
+                .writerWithDefaultPrettyPrinter().writeValueAsBytes(report);
+        return ResponseEntity.ok().contentType(MediaType.parseMediaType("application/json;charset=UTF-8"))
+                .header("Content-Disposition", "attachment; filename=compliance_report.json").body(body);
+    }
+
+    @GetMapping("/logs/export")
     public ResponseEntity<byte[]> exportAuditLogs(@RequestParam(required = false) Long userId,
                                                    @RequestParam(required = false) String resourceType) {
-        var page = securityService.getAuditLogs(1, 10000, userId, resourceType);
+        var page = securityService.getAuditLogs(1, 10000, userId, resourceType, null, null, null);
         StringBuilder csv = new StringBuilder("ID,操作类型,资源类型,操作人,IP,结果,时间,详情\n");
         for (AuditLog log : page.getRecords()) {
             csv.append(csv(log.getId())).append(',').append(csv(log.getActionType())).append(',')

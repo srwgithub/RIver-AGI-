@@ -4,13 +4,18 @@ import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.river.agi.annotation.entity.Annotation;
+import com.river.agi.annotation.entity.AnnotationHistory;
 import com.river.agi.annotation.entity.AnnotationTask;
 import com.river.agi.annotation.entity.AnnotationQualityRule;
+import com.river.agi.annotation.entity.AnnotationTaskAssignee;
 import com.river.agi.annotation.entity.LabelSchema;
 import com.river.agi.annotation.mapper.AnnotationMapper;
 import com.river.agi.annotation.mapper.AnnotationTaskMapper;
 import com.river.agi.annotation.mapper.LabelSchemaMapper;
 import com.river.agi.annotation.mapper.AnnotationQualityRuleMapper;
+import com.river.agi.annotation.mapper.AnnotationTaskAssigneeMapper;
+import com.river.agi.config.mapper.SystemConfigMapper;
+import com.river.agi.config.entity.SystemConfig;
 import com.river.agi.common.BusinessException;
 import com.river.agi.common.PageResult;
 import com.river.agi.common.SecurityUtils;
@@ -18,6 +23,8 @@ import com.river.agi.common.annotation.AuditOperation;
 import com.river.agi.dataset.entity.Dataset;
 import com.river.agi.dataset.mapper.DatasetMapper;
 import com.river.agi.dataset.service.DatasetDataReaderService;
+import com.river.agi.dataset.service.LocalStorageService;
+import com.opencsv.CSVWriter;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.security.core.Authentication;
@@ -26,6 +33,9 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
+import java.io.ByteArrayOutputStream;
+import java.io.OutputStreamWriter;
+import java.nio.charset.StandardCharsets;
 import java.time.LocalDateTime;
 import java.util.*;
 import java.util.regex.Pattern;
@@ -43,6 +53,12 @@ public class AnnotationService {
     private final ObjectMapper objectMapper;
     private final DatasetDataReaderService dataReader;
     private final AnnotationQualityRuleMapper qualityRuleMapper;
+    private final com.river.agi.annotation.mapper.AnnotationHistoryMapper historyMapper;
+    private final SystemConfigMapper systemConfigMapper;
+    private LocalStorageService localStorageService;
+
+    @Autowired(required = false)
+    private AnnotationTaskAssigneeMapper assigneeMapper;
 
     @Autowired
     public AnnotationService(LabelSchemaMapper labelSchemaMapper,
@@ -52,7 +68,9 @@ public class AnnotationService {
                               SecurityUtils securityUtils,
                               ObjectMapper objectMapper,
                               DatasetDataReaderService dataReader,
-                              AnnotationQualityRuleMapper qualityRuleMapper) {
+                              AnnotationQualityRuleMapper qualityRuleMapper,
+                              com.river.agi.annotation.mapper.AnnotationHistoryMapper historyMapper,
+                              SystemConfigMapper systemConfigMapper) {
         this.labelSchemaMapper = labelSchemaMapper;
         this.annotationTaskMapper = annotationTaskMapper;
         this.annotationMapper = annotationMapper;
@@ -61,6 +79,51 @@ public class AnnotationService {
         this.objectMapper = objectMapper;
         this.dataReader = dataReader;
         this.qualityRuleMapper = qualityRuleMapper;
+        this.historyMapper = historyMapper;
+        this.systemConfigMapper = systemConfigMapper;
+    }
+
+    @Autowired(required = false)
+    public void setLocalStorageService(LocalStorageService localStorageService) {
+        this.localStorageService = localStorageService;
+    }
+
+    @AuditOperation(action = "EXPORT_ANNOTATIONS", resourceType = "ANNOTATION_TASK", description = "Export annotated dataset")
+    public Map<String, Object> exportAnnotations(Long taskId, Authentication authentication) {
+        AnnotationTask task = getAnnotationTask(taskId);
+        Dataset dataset = task.getDatasetId() == null ? null : datasetMapper.selectById(task.getDatasetId());
+        if (dataset == null) throw new BusinessException("标注任务关联的数据集不存在");
+        if (localStorageService == null) throw new BusinessException("文件存储服务未配置");
+        List<Map<String, String>> rows = dataReader.readRows(dataset);
+        List<Annotation> annotations = annotationMapper.selectList(new LambdaQueryWrapper<Annotation>()
+                .eq(Annotation::getTaskId, taskId).orderByAsc(Annotation::getRowIndex));
+        Map<Integer, Annotation> byRow = annotations.stream().collect(Collectors.toMap(
+                a -> a.getRowIndex() == null ? 0 : a.getRowIndex().intValue(), a -> a, (first, ignored) -> first));
+        List<String> headers = new ArrayList<>(rows.isEmpty() ? List.of() : rows.get(0).keySet());
+        headers.add("annotation_label_code"); headers.add("annotation_label_name");
+        headers.add("annotation_status"); headers.add("annotation_comment");
+        ByteArrayOutputStream bytes = new ByteArrayOutputStream();
+        try (CSVWriter writer = new CSVWriter(new OutputStreamWriter(bytes, StandardCharsets.UTF_8))) {
+            writer.writeNext(headers.toArray(String[]::new));
+            for (int i = 0; i < rows.size(); i++) {
+                Map<String, String> row = rows.get(i);
+                Annotation annotation = byRow.get(i);
+                List<String> values = new ArrayList<>(headers.size());
+                for (String header : headers.subList(0, headers.size() - 4)) values.add(Optional.ofNullable(row.get(header)).orElse(""));
+                values.add(annotation == null ? "" : Optional.ofNullable(annotation.getLabelCode()).orElse(""));
+                values.add(annotation == null ? "" : Optional.ofNullable(annotation.getLabelName()).orElse(""));
+                values.add(annotation == null ? "PENDING" : Optional.ofNullable(annotation.getStatus()).orElse("PENDING"));
+                values.add(annotation == null ? "" : Optional.ofNullable(annotation.getComment()).orElse(""));
+                writer.writeNext(values.toArray(String[]::new));
+            }
+        } catch (Exception e) {
+            throw new BusinessException("标注结果文件生成失败: " + e.getMessage());
+        }
+        String filename = localStorageService.writeFile(bytes.toByteArray(), dataset.getName() + "_annotated.csv");
+        Map<String, Object> result = new LinkedHashMap<>();
+        result.put("taskId", taskId); result.put("outputRows", rows.size());
+        result.put("annotatedRows", annotations.size()); result.put("fileUrl", localStorageService.fileUrl(filename));
+        return result;
     }
 
     // Keep the legacy unit-test constructor compatible while Spring uses the full constructor.
@@ -73,6 +136,18 @@ public class AnnotationService {
                               DatasetDataReaderService dataReader) {
         this(labelSchemaMapper, annotationTaskMapper, annotationMapper, datasetMapper,
                 securityUtils, objectMapper, dataReader, null);
+    }
+
+    public AnnotationService(LabelSchemaMapper labelSchemaMapper,
+                              AnnotationTaskMapper annotationTaskMapper,
+                              AnnotationMapper annotationMapper,
+                              DatasetMapper datasetMapper,
+                              SecurityUtils securityUtils,
+                              ObjectMapper objectMapper,
+                              DatasetDataReaderService dataReader,
+                              AnnotationQualityRuleMapper qualityRuleMapper) {
+        this(labelSchemaMapper, annotationTaskMapper, annotationMapper, datasetMapper,
+                securityUtils, objectMapper, dataReader, qualityRuleMapper, null, null);
     }
     
     // Label Schema CRUD
@@ -417,11 +492,14 @@ public class AnnotationService {
                 .eq(LabelSchema::getCode, labelCode)
                 .eq(LabelSchema::getDeleted, 0));
         if (validLabels == 0) throw new BusinessException("标签不属于当前标签体系");
+
+        String oldValue = annotationSnapshot(annotation);
         
-        if (Annotation.Status.PRE_ANNOTATED.name().equals(annotation.getStatus()) && 
-            !labelCode.equals(annotation.getLabelCode())) {
-            annotation.setOriginalLabelCode(annotation.getLabelCode());
-            annotation.setOriginalConfidence(annotation.getConfidence());
+        if (!labelCode.equals(annotation.getLabelCode())) {
+            if (annotation.getOriginalLabelCode() == null) {
+                annotation.setOriginalLabelCode(annotation.getLabelCode());
+                annotation.setOriginalConfidence(annotation.getConfidence());
+            }
             annotation.setIsCorrected(true);
             annotation.setCorrectedAt(LocalDateTime.now());
             annotation.setAnnotationType(Annotation.AnnotationType.CORRECTION.name());
@@ -436,6 +514,7 @@ public class AnnotationService {
         annotation.setConfidence(annotation.getConfidence() != null ? annotation.getConfidence() : BigDecimal.ONE);
         
         annotationMapper.updateById(annotation);
+        recordHistory(annotation.getId(), "SUBMIT", userId, oldValue, annotationSnapshot(annotation), comment);
         
         updateTaskProgress(annotation.getTaskId());
         
@@ -452,6 +531,17 @@ public class AnnotationService {
         if (annotation == null) {
             throw new BusinessException("Annotation not found");
         }
+
+        if (!Annotation.Status.SUBMITTED.name().equals(annotation.getStatus())
+                && !Annotation.Status.IN_REVIEW.name().equals(annotation.getStatus())
+                && !Annotation.Status.PRE_ANNOTATED.name().equals(annotation.getStatus())) {
+            throw new BusinessException("当前标注状态不可审核：" + annotation.getStatus());
+        }
+        if (!approved && (reviewComment == null || reviewComment.isBlank())) {
+            throw new BusinessException("驳回必须填写原因");
+        }
+
+        String oldValue = annotationSnapshot(annotation);
         
         annotation.setStatus(approved ? Annotation.Status.APPROVED.name() : Annotation.Status.REJECTED.name());
         annotation.setReviewComment(reviewComment);
@@ -459,6 +549,8 @@ public class AnnotationService {
         annotation.setReviewedAt(LocalDateTime.now());
         
         annotationMapper.updateById(annotation);
+        recordHistory(annotation.getId(), approved ? "REVIEW_APPROVE" : "REVIEW_REJECT",
+                annotation.getReviewedBy(), oldValue, annotationSnapshot(annotation), reviewComment);
         
         AnnotationTask task = annotationTaskMapper.selectById(annotation.getTaskId());
         if (task != null) {
@@ -481,6 +573,22 @@ public class AnnotationService {
         if (annotation == null) {
             throw new BusinessException("Annotation not found");
         }
+        if (!Annotation.Status.IN_REVIEW.name().equals(annotation.getStatus())
+                && !Annotation.Status.REJECTED.name().equals(annotation.getStatus())) {
+            throw new BusinessException("当前标注未进入争议仲裁流程");
+        }
+        if (labelCode == null || labelCode.isBlank()) {
+            throw new BusinessException("仲裁标签不能为空");
+        }
+        AnnotationTask task = annotationTaskMapper.selectById(annotation.getTaskId());
+        if (task == null) throw new BusinessException("Annotation task not found");
+        long validLabels = labelSchemaMapper.selectCount(new LambdaQueryWrapper<LabelSchema>()
+                .eq(LabelSchema::getParentId, task.getLabelSchemaId())
+                .eq(LabelSchema::getCode, labelCode)
+                .eq(LabelSchema::getDeleted, 0));
+        if (validLabels == 0) throw new BusinessException("仲裁标签不属于当前标签体系");
+
+        String oldValue = annotationSnapshot(annotation);
         
         annotation.setLabelCode(labelCode);
         annotation.setLabelName(labelName);
@@ -492,13 +600,12 @@ public class AnnotationService {
         annotation.setConfidence(BigDecimal.ONE);
         
         annotationMapper.updateById(annotation);
+        recordHistory(annotation.getId(), "ARBITRATE", annotation.getReviewedBy(),
+                oldValue, annotationSnapshot(annotation), comment);
         
-        AnnotationTask task = annotationTaskMapper.selectById(annotation.getTaskId());
-        if (task != null) {
-            task.setArbitrationCount((task.getArbitrationCount() == null ? 0 : task.getArbitrationCount()) + 1);
-            task.setUpdatedAt(LocalDateTime.now());
-            annotationTaskMapper.updateById(task);
-        }
+        task.setArbitrationCount((task.getArbitrationCount() == null ? 0 : task.getArbitrationCount()) + 1);
+        task.setUpdatedAt(LocalDateTime.now());
+        annotationTaskMapper.updateById(task);
         
         return annotation;
     }
@@ -507,6 +614,32 @@ public class AnnotationService {
     
     public List<Annotation> getAnnotations(Long taskId) {
         return annotationMapper.selectByTaskId(taskId);
+    }
+
+
+    public List<AnnotationHistory> getAnnotationHistory(Long taskId) {
+        if (annotationTaskMapper.selectById(taskId) == null) throw new BusinessException("Annotation task not found");
+        return historyMapper == null ? List.of() : historyMapper.selectByTaskId(taskId);
+    }
+
+    private void recordHistory(Long itemId, String action, Long operatorId, String oldValue, String newValue, String reason) {
+        if (historyMapper == null) return;
+        AnnotationHistory history = new AnnotationHistory();
+        history.setItemId(itemId); history.setAction(action); history.setOperatorId(operatorId);
+        history.setOldValue(oldValue); history.setNewValue(newValue); history.setReason(reason);
+        history.setCreatedAt(LocalDateTime.now()); historyMapper.insert(history);
+    }
+
+    private String annotationSnapshot(Annotation annotation) {
+        Map<String, Object> snapshot = new LinkedHashMap<>();
+        snapshot.put("labelCode", annotation.getLabelCode());
+        snapshot.put("labelName", annotation.getLabelName());
+        snapshot.put("status", annotation.getStatus());
+        snapshot.put("confidence", annotation.getConfidence());
+        snapshot.put("annotatedBy", annotation.getAnnotatedBy());
+        snapshot.put("reviewedBy", annotation.getReviewedBy());
+        snapshot.put("comment", annotation.getComment());
+        return toJson(snapshot);
     }
     
     // Get annotation quality metrics
@@ -543,6 +676,11 @@ public class AnnotationService {
         long arbitratedCount = annotations.stream()
                 .filter(a -> Annotation.Status.ARBITRATED.name().equals(a.getStatus()))
                 .count();
+        long pendingReviewCount = annotations.stream()
+                .filter(a -> Annotation.Status.SUBMITTED.name().equals(a.getStatus())
+                        || Annotation.Status.IN_REVIEW.name().equals(a.getStatus())
+                        || Annotation.Status.REJECTED.name().equals(a.getStatus()))
+                .count();
         
         metrics.put("preAnnotatedCount", preAnnotatedCount);
         metrics.put("submittedCount", submittedCount);
@@ -550,14 +688,24 @@ public class AnnotationService {
         metrics.put("rejectedCount", rejectedCount);
         metrics.put("correctedCount", correctedCount);
         metrics.put("arbitratedCount", arbitratedCount);
+        metrics.put("pendingReviewCount", pendingReviewCount);
         
         double submitRate = annotations.isEmpty() ? 0.0 : (double) submittedCount / annotations.size();
-        double approveRate = submittedCount > 0 ? (double) approvedCount / submittedCount : 1.0;
+        // ARBITRATED is the final human decision for a disputed sample. It is
+        // therefore an accepted outcome for the quality gate, while the
+        // separate arbitrationRate still exposes how often arbitration was used.
+        long acceptedCount = approvedCount + arbitratedCount;
+        double approveRate = submittedCount > 0 ? (double) acceptedCount / submittedCount : 1.0;
         double correctionRate = preAnnotatedCount > 0 ? (double) correctedCount / preAnnotatedCount : 0.0;
         
         metrics.put("submitRate", submitRate);
         metrics.put("approveRate", approveRate);
         metrics.put("correctionRate", correctionRate);
+        metrics.put("validationRate", annotations.isEmpty() ? 1.0
+                : (double) (approvedCount + arbitratedCount) / annotations.size());
+        metrics.put("arbitrationRate", annotations.isEmpty() ? 0.0
+                : (double) arbitratedCount / annotations.size());
+        metrics.put("consistencyRate", task.getConsistencyRate() == null ? 1.0 : task.getConsistencyRate());
         
         double avgConfidence = annotations.stream()
                 .filter(a -> a.getConfidence() != null)
@@ -571,8 +719,11 @@ public class AnnotationService {
         metrics.put("qualityScore", qualityScore);
         metrics.put("qualityLevel", getQualityLevel(qualityScore));
         metrics.put("publishable", qualityScore >= 0.80 && approveRate >= 0.80 && correctionRate <= 0.20);
-        metrics.put("qualityWeights", Map.of("approveRate", 0.35, "correctionRate", 0.25,
-                "confidence", 0.25, "submitRate", 0.15));
+        Map<String, Object> configuredWeights = qualityConfig();
+        metrics.put("qualityWeights", Map.of("approveRate", number(configuredWeights.get("approveWeight"), .35),
+                "correctionRate", number(configuredWeights.get("correctionPenalty"), .25),
+                "confidence", number(configuredWeights.get("validationWeight"), .25),
+                "submitRate", number(configuredWeights.get("consistencyWeight"), .15)));
         
         return metrics;
     }
@@ -581,12 +732,33 @@ public class AnnotationService {
     
     private double calculateQualityScore(double approveRate, double correctionRate, 
                                           double avgConfidence, double submitRate) {
-        double score = 0.0;
-        score += approveRate * 0.35;
-        score += (1.0 - correctionRate) * 0.25;
-        score += avgConfidence * 0.25;
-        score += submitRate * 0.15;
+        Map<String, Object> config = qualityConfig();
+        double approveWeight = number(config.get("approveWeight"), .35);
+        double correctionWeight = number(config.get("correctionPenalty"), .25);
+        double confidenceWeight = number(config.get("validationWeight"), .25);
+        double submitWeight = number(config.get("consistencyWeight"), .15);
+        double score = approveRate * approveWeight;
+        score += (1.0 - correctionRate) * correctionWeight;
+        score += avgConfidence * confidenceWeight;
+        score += submitRate * submitWeight;
         return Math.min(1.0, Math.max(0.0, score));
+    }
+
+    private Map<String, Object> qualityConfig() {
+        if (systemConfigMapper == null) return Map.of();
+        try {
+            SystemConfig config = systemConfigMapper.selectOne(new LambdaQueryWrapper<SystemConfig>()
+                    .eq(SystemConfig::getTenantId, 1L)
+                    .eq(SystemConfig::getNamespace, "annotation-quality")
+                    .eq(SystemConfig::getSnapshot, false)
+                    .orderByDesc(SystemConfig::getVersion).last("LIMIT 1"));
+            if (config == null || config.getConfigJson() == null) return Map.of();
+            return objectMapper.readValue(config.getConfigJson(), Map.class);
+        } catch (Exception ignored) { return Map.of(); }
+    }
+
+    private double number(Object value, double fallback) {
+        return value instanceof Number ? ((Number) value).doubleValue() : fallback;
     }
     
     private String getQualityLevel(double score) {
@@ -682,11 +854,29 @@ public class AnnotationService {
             throw new BusinessException("Annotation task not found");
         }
         
-        task.setAssignedAnnotators(annotatorIds.size());
+        List<Long> normalizedIds = annotatorIds == null ? List.of() : annotatorIds.stream()
+                .filter(Objects::nonNull).distinct().toList();
+        if (normalizedIds.isEmpty()) throw new BusinessException("至少选择一名标注员");
+
+        if (assigneeMapper != null) {
+            assigneeMapper.delete(new LambdaQueryWrapper<AnnotationTaskAssignee>()
+                    .eq(AnnotationTaskAssignee::getTaskId, taskId));
+            Long operatorId = securityUtils.getCurrentUserId(authentication);
+            for (Long annotatorId : normalizedIds) {
+                AnnotationTaskAssignee assignee = new AnnotationTaskAssignee();
+                assignee.setTaskId(taskId);
+                assignee.setAnnotatorId(annotatorId);
+                assignee.setAssignedBy(operatorId);
+                assignee.setStatus("ACTIVE");
+                assignee.setAssignedAt(LocalDateTime.now());
+                assigneeMapper.insert(assignee);
+            }
+        }
+        task.setAssignedAnnotators(normalizedIds.size());
         task.setUpdatedAt(LocalDateTime.now());
         annotationTaskMapper.updateById(task);
         
-        log.info("Assigned {} annotators to task {}", annotatorIds.size(), taskId);
+        log.info("Assigned annotators {} to task {}", normalizedIds, taskId);
         return task;
     }
     
@@ -694,38 +884,55 @@ public class AnnotationService {
     
     public PageResult<Annotation> getAnnotatorTasks(Long annotatorId, int page, int size) {
         Page<Annotation> pageRequest = new Page<>(page, size);
-        Page<Annotation> pageResult = annotationMapper.selectPage(pageRequest,
-                new LambdaQueryWrapper<Annotation>()
-                        .eq(Annotation::getAnnotatedBy, annotatorId)
-                        .in(Annotation::getStatus, 
-                            Annotation.Status.PENDING.name(),
-                            Annotation.Status.PRE_ANNOTATED.name(),
-                            Annotation.Status.IN_REVIEW.name())
-                        .orderByAsc(Annotation::getTaskId)
-                        .orderByAsc(Annotation::getRowIndex));
+        LambdaQueryWrapper<Annotation> query = new LambdaQueryWrapper<Annotation>()
+                .in(Annotation::getStatus,
+                        Annotation.Status.PENDING.name(),
+                        Annotation.Status.PRE_ANNOTATED.name(),
+                        Annotation.Status.IN_REVIEW.name(),
+                        Annotation.Status.REJECTED.name())
+                .orderByAsc(Annotation::getTaskId)
+                .orderByAsc(Annotation::getRowIndex);
+        if (assigneeMapper != null) {
+            List<Long> assignedTaskIds = assigneeMapper.selectList(new LambdaQueryWrapper<AnnotationTaskAssignee>()
+                            .eq(AnnotationTaskAssignee::getAnnotatorId, annotatorId)
+                            .eq(AnnotationTaskAssignee::getStatus, "ACTIVE"))
+                    .stream().map(AnnotationTaskAssignee::getTaskId).distinct().toList();
+            if (assignedTaskIds.isEmpty()) {
+                query.eq(Annotation::getAnnotatedBy, annotatorId);
+            } else {
+                query.in(Annotation::getTaskId, assignedTaskIds);
+            }
+        } else {
+            query.eq(Annotation::getAnnotatedBy, annotatorId);
+        }
+        Page<Annotation> pageResult = annotationMapper.selectPage(pageRequest, query);
         return PageResult.of(pageResult.getRecords(), pageResult.getTotal(), page, size);
     }
     
     // Quality Sampling (抽检)
     
     @AuditOperation(action = "QUALITY_SAMPLING", resourceType = "ANNOTATION", description = "Sample annotations for quality check")
-    public Map<String, Object> performQualitySampling(Long taskId, double sampleRate, Authentication authentication) {
+    @Transactional
+    public Map<String, Object> performQualitySampling(Long taskId, double sampleRate,
+                                                       Map<String, Object> reviewDecisions,
+                                                       Authentication authentication) {
         AnnotationTask task = annotationTaskMapper.selectById(taskId);
         if (task == null) {
             throw new BusinessException("Annotation task not found");
         }
         
         List<Annotation> allAnnotations = annotationMapper.selectByTaskId(taskId);
-        int sampleSize = (int) Math.ceil(allAnnotations.size() * sampleRate);
-        
-        List<Annotation> sampledAnnotations = new ArrayList<>();
+        sampleRate = Math.max(0.01, Math.min(1.0, sampleRate));
+
         List<Annotation> candidates = allAnnotations.stream()
                 .filter(a -> Annotation.Status.SUBMITTED.name().equals(a.getStatus()) ||
                             Annotation.Status.APPROVED.name().equals(a.getStatus()))
                 .collect(Collectors.toList());
-        
+
+        int sampleSize = candidates.isEmpty() ? 0
+                : Math.min(candidates.size(), Math.max(1, (int) Math.ceil(candidates.size() * sampleRate)));
         Collections.shuffle(candidates);
-        sampledAnnotations = candidates.stream().limit(sampleSize).collect(Collectors.toList());
+        List<Annotation> sampledAnnotations = candidates.stream().limit(sampleSize).toList();
         
         int passedCount = 0;
         int failedCount = 0;
@@ -739,22 +946,29 @@ public class AnnotationService {
             result.put("originalAnnotator", annotation.getAnnotatedBy());
             result.put("confidence", annotation.getConfidence());
             
-            boolean passed = annotation.getConfidence() != null && 
-                             annotation.getConfidence().compareTo(new BigDecimal("0.7")) >= 0;
-            
-            if (passed) {
+            Object decision = reviewDecisions == null ? null : reviewDecisions.get(String.valueOf(annotation.getId()));
+            Boolean passed = parseReviewDecision(decision);
+            String oldValue = annotationSnapshot(annotation);
+            if (passed == null) {
+                annotation.setStatus(Annotation.Status.IN_REVIEW.name());
+            } else if (passed) {
                 passedCount++;
                 annotation.setStatus(Annotation.Status.APPROVED.name());
             } else {
                 failedCount++;
-                annotation.setStatus(Annotation.Status.IN_REVIEW.name());
+                annotation.setStatus(Annotation.Status.REJECTED.name());
             }
             annotation.setReviewedBy(securityUtils.getCurrentUserId(authentication));
-            annotation.setReviewedAt(LocalDateTime.now());
+            annotation.setReviewedAt(passed == null ? null : LocalDateTime.now());
             annotationMapper.updateById(annotation);
+            if (passed != null) {
+                recordHistory(annotation.getId(), passed ? "SAMPLE_APPROVE" : "SAMPLE_REJECT",
+                        annotation.getReviewedBy(), oldValue, annotationSnapshot(annotation), "人工抽检结论");
+            }
             
             result.put("sampled", true);
             result.put("passed", passed);
+            result.put("requiresManualReview", passed == null);
             result.put("sampledBy", securityUtils.getCurrentUserId(authentication));
             result.put("sampledAt", LocalDateTime.now());
             samplingResults.add(result);
@@ -767,13 +981,26 @@ public class AnnotationService {
         samplingReport.put("sampleSize", sampleSize);
         samplingReport.put("passedCount", passedCount);
         samplingReport.put("failedCount", failedCount);
-        samplingReport.put("passRate", allAnnotations.isEmpty() ? 1.0 : (double) passedCount / sampleSize);
+        samplingReport.put("passRate", sampleSize == 0 ? 0.0 : (double) passedCount / sampleSize);
+        samplingReport.put("pendingReviewCount", samplingResults.stream()
+                .filter(item -> Boolean.TRUE.equals(item.get("requiresManualReview"))).count());
+        samplingReport.put("manualReviewRequired", samplingResults.stream()
+                .anyMatch(item -> Boolean.TRUE.equals(item.get("requiresManualReview"))));
         samplingReport.put("samplingResults", samplingResults);
         
         log.info("Quality sampling completed for task {}: {}/{} passed", 
                 taskId, passedCount, sampleSize);
         
         return samplingReport;
+    }
+
+    private Boolean parseReviewDecision(Object decision) {
+        if (decision == null) return null;
+        if (decision instanceof Boolean value) return value;
+        String normalized = String.valueOf(decision).trim().toLowerCase(Locale.ROOT);
+        if (Set.of("true", "1", "pass", "passed", "approve", "approved").contains(normalized)) return true;
+        if (Set.of("false", "0", "fail", "failed", "reject", "rejected").contains(normalized)) return false;
+        return null;
     }
     
     // Consistency Check (一致性检查)
@@ -793,13 +1020,20 @@ public class AnnotationService {
         List<Map<String, Object>> inconsistencies = new ArrayList<>();
         int consistentRows = 0;
         int inconsistentRows = 0;
+        int singleAnnotatorRows = 0;
         
         for (Map.Entry<Integer, List<Annotation>> entry : rowGroups.entrySet()) {
             int rowIndex = entry.getKey();
             List<Annotation> rowAnnotations = entry.getValue();
             
-            if (rowAnnotations.size() < 2) {
+            long annotatorCount = rowAnnotations.stream()
+                    .map(Annotation::getAnnotatedBy)
+                    .filter(Objects::nonNull)
+                    .distinct()
+                    .count();
+            if (annotatorCount < 2) {
                 consistentRows++;
+                singleAnnotatorRows++;
                 continue;
             }
             
@@ -830,13 +1064,17 @@ public class AnnotationService {
             }
         }
         
-        double consistencyRate = rowGroups.isEmpty() ? 1.0 : (double) consistentRows / rowGroups.size();
+        int comparableRows = rowGroups.size() - singleAnnotatorRows;
+        double consistencyRate = comparableRows == 0 ? 1.0 : (double) (comparableRows - inconsistentRows) / comparableRows;
         
         Map<String, Object> result = new LinkedHashMap<>();
         result.put("taskId", taskId);
         result.put("totalRows", rowGroups.size());
         result.put("consistentRows", consistentRows);
         result.put("inconsistentRows", inconsistentRows);
+        result.put("comparableRows", comparableRows);
+        result.put("singleAnnotatorRows", singleAnnotatorRows);
+        result.put("consistencyApplicable", comparableRows > 0);
         result.put("consistencyRate", round(consistencyRate, 4));
         result.put("inconsistencies", inconsistencies);
         result.put("recommendation", generateConsistencyRecommendation(consistencyRate));

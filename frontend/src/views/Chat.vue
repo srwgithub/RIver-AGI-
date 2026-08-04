@@ -163,7 +163,8 @@ onMounted(async () => {
     const data = await request.get('/v1/datasets?page=1&size=20')
     datasets.value = data.records || []
   } catch (e) {
-    datasets.value = [{ id: 1, name: '销售数据.xlsx' }]
+    datasets.value = []
+    ElMessage.error(`数据集加载失败：${e.message || '后端接口不可用'}`)
   }
   
   // 加载历史会话列表

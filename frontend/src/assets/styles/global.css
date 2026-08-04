@@ -384,6 +384,70 @@ body {
   padding-left: 52px !important;
   font-size: 13px;
 }
+.sidebar-menu .el-menu-item-group__title {
+  height: 30px;
+  line-height: 30px;
+  padding: 8px 20px 0 52px !important;
+  color: var(--text-3) !important;
+  font-size: 11px;
+  font-weight: 500;
+}
+.sidebar-menu .el-sub-menu > .el-menu {
+  background: transparent !important;
+}
+.sidebar-menu .el-sub-menu > .el-menu .el-menu-item {
+  padding-left: 52px !important;
+  color: var(--text-2) !important;
+}
+
+/* Collapsed navigation renders submenus in a body-level popper. Keep its
+   palette independent from the sidebar's transparent/white text settings. */
+.el-menu--popup {
+  min-width: 190px !important;
+  padding: 6px !important;
+  background: #fff !important;
+  border: 1px solid var(--border-1) !important;
+  border-radius: var(--radius-md) !important;
+  box-shadow: 0 8px 24px rgba(29, 33, 41, .12) !important;
+}
+.el-menu--popup .el-menu-item {
+  height: 38px !important;
+  line-height: 38px !important;
+  margin: 2px 0 !important;
+  padding: 0 12px !important;
+  border-radius: var(--radius-sm) !important;
+  color: var(--text-2) !important;
+  background: transparent !important;
+  font-size: 13px !important;
+}
+.el-menu--popup .el-menu-item:hover,
+.el-menu--popup .el-menu-item.is-active {
+  color: var(--primary) !important;
+  background: var(--primary-light) !important;
+}
+.sidebar-module-popper {
+  min-width: 218px !important;
+  padding: 7px !important;
+  background: #fff !important;
+  border: 1px solid var(--border-1) !important;
+  border-radius: var(--radius-md) !important;
+  box-shadow: 0 8px 24px rgba(29, 33, 41, .14) !important;
+}
+.sidebar-module-popper .el-menu-item {
+  height: 38px !important;
+  line-height: 38px !important;
+  margin: 2px 0 !important;
+  padding: 0 13px !important;
+  border-radius: var(--radius-sm) !important;
+  color: var(--text-2) !important;
+  background: #fff !important;
+  font-size: 13px !important;
+}
+.sidebar-module-popper .el-menu-item:hover,
+.sidebar-module-popper .el-menu-item.is-active {
+  color: var(--primary) !important;
+  background: var(--primary-light) !important;
+}
 .sidebar-logo {
   height: 60px;
   display: flex;
