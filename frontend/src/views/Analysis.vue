@@ -87,7 +87,7 @@
 import { ref, computed, onMounted, watch } from 'vue'
 import { ElMessage } from 'element-plus'
 import request from '../utils/request'
-import { getActiveDatasetId, onDatasetSync } from '../utils/workspaceSync'
+import { getActiveDatasetId, onDatasetSync, setDatasetHealthScore } from '../utils/workspaceSync'
 
 const datasets = ref([])
 const selectedDataset = ref('')
@@ -207,6 +207,8 @@ const runQuality = async () => {
     const task = await request.post(`/v1/analysis/quality?datasetId=${selectedDataset.value}`)
     if (task.resultJson) {
       qualityData.value = JSON.parse(task.resultJson)
+      const score = qualityData.value.overallScore ?? qualityData.value.qualityScore
+      if (score != null) setDatasetHealthScore(selectedDataset.value, Number(score) <= 1 ? Number(score) * 100 : Number(score))
       ElMessage.success('分析完成')
     }
   } catch (e) {
