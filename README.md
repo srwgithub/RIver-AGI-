@@ -495,6 +495,45 @@ JWT_SECRET=请替换为至少32位的随机字符串
 - [ ] 已执行备份恢复演练和权限生效验证。
 - [ ] 已准备生产环境密钥、备份策略和监控方案。
 
-## 16. 许可证
+## 16. 运维交付件
+
+本项目同时交付以下运维和培训材料：
+
+- `docs/运维手册.md`：测试/生产部署、日常操作、发布回滚和安全要求。
+- `docs/监控告警方案.md`：服务、资源、模型性能、业务和安全监控，告警分级及日志分析。
+- `docs/故障应急预案.md`：Java、Python、MySQL、磁盘、权限安全等故障处置与恢复验收。
+- `docs/培训材料.md`：管理员、业务人员、运维人员培训和现场演示流程。
+- `ops/health-check.sh`：一键检查前端、Java、Python 和 MySQL 基础可用性。
+
+执行运维检查：
+
+```bash
+chmod +x ops/health-check.sh
+./ops/health-check.sh
+```
+
+## 17. 生产化验收工具
+
+已补充以下可执行交付件：
+
+- `backend/src/main/resources/application-prod.yml`：生产 profile，关闭 H2 控制台，开启数据加密和限流，降低日志级别并提高连接池默认值。
+- `backend/.env.example`：生产环境变量模板。
+- `backend/prediction-engine/Dockerfile`：Python 引擎镜像。
+- `backend/docker-compose.yml`：Java、Python、MySQL、Redis、RabbitMQ、MinIO 编排和健康依赖。
+- `ops/nginx.conf.example`：HTTPS、API 反向代理和 Vue SPA 路由回退模板。
+- `qa/performance_smoke.py`：并发 smoke 测试脚本。
+- `ops/security-baseline.sh`：敏感配置和生产文件安全基线检查。
+
+运行示例：
+
+```bash
+python3 qa/performance_smoke.py --users 200 --requests 200
+./ops/security-baseline.sh
+cd backend && mvn -Pquality-gate verify
+```
+
+性能脚本用于预检和生成现场测试数据，不等同于合同性能证明。正式验收仍需在目标生产硬件、目标数据规模下留存 200 并发、1.5/5 秒、千万/百万级数据和长周期可用率报告；等保二级仍需由具备资质的第三方测评机构出具结论。
+
+## 18. 许可证
 
 MIT License

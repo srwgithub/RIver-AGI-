@@ -1,5 +1,6 @@
 package com.river.agi.common;
 
+import com.river.agi.auth.mapper.RoleMapper;
 import com.river.agi.dataset.entity.Dataset;
 import com.river.agi.dataset.mapper.DatasetMapper;
 import com.river.agi.security.entity.SecurityScanTask;
@@ -36,13 +37,30 @@ public class ResourceAccessValidator {
     private final ChartConfigMapper chartConfigMapper;
     private final ReportMapper reportMapper;
     private final AsyncTaskMapper asyncTaskMapper;
+    private final RoleMapper roleMapper;
+    
+    private boolean isAdminUser(Long userId) {
+        if (userId == null) return false;
+        try {
+            return roleMapper.selectCodesByUserId(userId).contains("ADMIN");
+        } catch (Exception e) {
+            log.warn("Failed to check admin role for user {}: {}", userId, e.getMessage());
+            return false;
+        }
+    }
+    
+    private boolean canAccessResource(Long ownerId, Long userId) {
+        if (ownerId == null) return true;
+        if (ownerId.equals(userId)) return true;
+        return isAdminUser(userId);
+    }
     
     public void validateDatasetAccess(Long datasetId, Long userId) {
         Dataset dataset = datasetMapper.selectById(datasetId);
         if (dataset == null) {
             throw new BusinessException("数据集不存在");
         }
-        if (dataset.getCreatedBy() != null && !dataset.getCreatedBy().equals(userId)) {
+        if (!canAccessResource(dataset.getCreatedBy(), userId)) {
             throw new BusinessException("无权访问此数据集");
         }
     }
@@ -53,7 +71,7 @@ public class ResourceAccessValidator {
             throw new BusinessException("安全扫描任务不存在");
         }
         Dataset dataset = datasetMapper.selectById(task.getDatasetId());
-        if (dataset != null && dataset.getCreatedBy() != null && !dataset.getCreatedBy().equals(userId)) {
+        if (dataset != null && !canAccessResource(dataset.getCreatedBy(), userId)) {
             throw new BusinessException("无权访问此安全扫描结果");
         }
     }
@@ -64,7 +82,7 @@ public class ResourceAccessValidator {
             throw new BusinessException("预测任务不存在");
         }
         Dataset dataset = datasetMapper.selectById(task.getDatasetId());
-        if (dataset != null && dataset.getCreatedBy() != null && !dataset.getCreatedBy().equals(userId)) {
+        if (dataset != null && !canAccessResource(dataset.getCreatedBy(), userId)) {
             throw new BusinessException("无权访问此预测结果");
         }
     }
@@ -78,11 +96,11 @@ public class ResourceAccessValidator {
             PredictionTask task = predictionTaskMapper.selectById(mv.getPredictionTaskId());
             if (task != null) {
                 Dataset dataset = datasetMapper.selectById(task.getDatasetId());
-                if (dataset != null && dataset.getCreatedBy() != null && !dataset.getCreatedBy().equals(userId)) {
+                if (dataset != null && !canAccessResource(dataset.getCreatedBy(), userId)) {
                     throw new BusinessException("无权访问此模型版本");
                 }
             }
-        } else if (mv.getCreatedBy() != null && !mv.getCreatedBy().equals(userId)) {
+        } else if (mv.getCreatedBy() != null && !canAccessResource(mv.getCreatedBy(), userId)) {
             throw new BusinessException("无权访问此模型版本");
         }
     }
@@ -92,7 +110,7 @@ public class ResourceAccessValidator {
         if (task == null) {
             throw new BusinessException("标注任务不存在");
         }
-        if (task.getCreatedBy() != null && !task.getCreatedBy().equals(userId)) {
+        if (!canAccessResource(task.getCreatedBy(), userId)) {
             throw new BusinessException("无权访问此标注任务");
         }
     }
@@ -102,7 +120,7 @@ public class ResourceAccessValidator {
         if (session == null) {
             throw new BusinessException("对话会话不存在");
         }
-        if (!session.getUserId().equals(userId)) {
+        if (!session.getUserId().equals(userId) && !isAdminUser(userId)) {
             throw new BusinessException("无权访问此对话");
         }
     }
@@ -114,7 +132,7 @@ public class ResourceAccessValidator {
         }
         if (config.getDatasetId() != null) {
             Dataset dataset = datasetMapper.selectById(config.getDatasetId());
-            if (dataset != null && dataset.getCreatedBy() != null && !dataset.getCreatedBy().equals(userId)) {
+            if (dataset != null && !canAccessResource(dataset.getCreatedBy(), userId)) {
                 throw new BusinessException("无权访问此图表配置");
             }
         }
@@ -127,7 +145,7 @@ public class ResourceAccessValidator {
         }
         if (report.getDatasetId() != null) {
             Dataset dataset = datasetMapper.selectById(report.getDatasetId());
-            if (dataset != null && dataset.getCreatedBy() != null && !dataset.getCreatedBy().equals(userId)) {
+            if (dataset != null && !canAccessResource(dataset.getCreatedBy(), userId)) {
                 throw new BusinessException("无权访问此报告");
             }
         }
@@ -138,7 +156,7 @@ public class ResourceAccessValidator {
         if (task == null) {
             throw new BusinessException("异步任务不存在");
         }
-        if (task.getCreatedBy() != null && !task.getCreatedBy().equals(userId)) {
+        if (!canAccessResource(task.getCreatedBy(), userId)) {
             throw new BusinessException("无权访问此任务");
         }
     }
@@ -148,7 +166,7 @@ public class ResourceAccessValidator {
         if (dataset == null) {
             throw new BusinessException("数据集不存在");
         }
-        if (dataset.getCreatedBy() == null || !dataset.getCreatedBy().equals(userId)) {
+        if (dataset.getCreatedBy() != null && !dataset.getCreatedBy().equals(userId) && !isAdminUser(userId)) {
             throw new BusinessException("无权操作此数据集");
         }
     }

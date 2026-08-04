@@ -1,0 +1,41 @@
+server:
+  forward-headers-strategy: framework
+
+spring:
+  h2:
+    console:
+      enabled: false
+  sql:
+    init:
+      mode: never
+
+encryption:
+  enabled: true
+
+security:
+  rate-limit:
+    enabled: true
+    max-requests-per-minute: ${RATE_LIMIT_MAX_REQUESTS_PER_MINUTE:120}
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics
+  health:
+    db:
+      enabled: true
+    redis:
+      enabled: ${REDIS_HEALTH_ENABLED:true}
+
+logging:
+  level:
+    com.river.agi: INFO
+    org.springframework.security: WARN
+    org.mybatis.spring: WARN
+
+spring.datasource.hikari:
+  maximum-pool-size: ${DB_POOL_MAX:100}
+  minimum-idle: ${DB_POOL_MIN:20}
+  connection-timeout: ${DB_CONNECTION_TIMEOUT:3000}
+

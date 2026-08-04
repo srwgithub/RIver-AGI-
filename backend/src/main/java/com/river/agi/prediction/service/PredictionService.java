@@ -15,6 +15,7 @@ import com.river.agi.common.BusinessException;
 import com.river.agi.common.PageResult;
 import com.river.agi.common.SecurityUtils;
 import com.river.agi.common.ResourceAccessValidator;
+import com.river.agi.auth.mapper.RoleMapper;
 import com.river.agi.common.annotation.AuditOperation;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
@@ -45,6 +46,7 @@ public class PredictionService {
     private final SecurityUtils securityUtils;
     private final ResourceAccessValidator accessValidator;
     private final DatasetDataReaderService dataReader;
+    private final RoleMapper roleMapper;
     private Executor taskExecutor;
     private RuntimeMonitoringService runtimeMonitoringService;
 
@@ -499,9 +501,33 @@ public class PredictionService {
 
     public PageResult<PredictionTask> getPredictionTasks(int page, int size) {
         Page<PredictionTask> pageRequest = new Page<>(page, size);
-        Page<PredictionTask> pageResult = predictionTaskMapper.selectPage(pageRequest,
-                new LambdaQueryWrapper<PredictionTask>().orderByDesc(PredictionTask::getCreatedAt));
+        LambdaQueryWrapper<PredictionTask> wrapper = new LambdaQueryWrapper<PredictionTask>()
+                .orderByDesc(PredictionTask::getCreatedAt);
+        
+        Authentication auth = SecurityContextHolder.getContext().getAuthentication();
+        if (auth != null) {
+            Long userId = securityUtils.getCurrentUserId(auth);
+            if (!isAdminUser(userId)) {
+                List<Long> datasetIds = datasetMapper.selectList(
+                        new LambdaQueryWrapper<Dataset>().eq(Dataset::getCreatedBy, userId))
+                        .stream().map(Dataset::getId).toList();
+                if (datasetIds.isEmpty()) {
+                    return PageResult.of(List.of(), 0L, page, size);
+                }
+                wrapper.in(PredictionTask::getDatasetId, datasetIds);
+            }
+        }
+        
+        Page<PredictionTask> pageResult = predictionTaskMapper.selectPage(pageRequest, wrapper);
         return PageResult.of(pageResult.getRecords(), pageResult.getTotal(), page, size);
+    }
+    
+    private boolean isAdminUser(Long userId) {
+        try {
+            return roleMapper.selectCodesByUserId(userId).contains("ADMIN");
+        } catch (Exception e) {
+            return false;
+        }
     }
 
     public List<PredictionResult> getPredictionResults(Long taskId) {
