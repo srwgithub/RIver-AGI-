@@ -557,6 +557,8 @@ CREATE TABLE IF NOT EXISTS backup_record (
     file_path VARCHAR(500),
     size_bytes BIGINT DEFAULT 0,
     error TEXT,
+    checksum VARCHAR(128),
+    offsite_path VARCHAR(500),
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     completed_at TIMESTAMP
 );
@@ -599,6 +601,22 @@ CREATE TABLE IF NOT EXISTS media_annotation (
 
 CREATE INDEX IF NOT EXISTS idx_media_task_id ON media_annotation (task_id);
 CREATE INDEX IF NOT EXISTS idx_media_type ON media_annotation (media_type);
+
+-- 合同 14.2.1 隐私政策知情同意记录
+CREATE TABLE IF NOT EXISTS privacy_consent (
+    id BIGINT AUTO_INCREMENT PRIMARY KEY,
+    user_id BIGINT,
+    username VARCHAR(50),
+    policy_version VARCHAR(50) NOT NULL,
+    consent_type VARCHAR(20),
+    ip_address VARCHAR(50),
+    user_agent VARCHAR(500),
+    tenant_id BIGINT DEFAULT 1,
+    consent_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS idx_privacy_consent_user_id ON privacy_consent (user_id);
+CREATE INDEX IF NOT EXISTS idx_privacy_consent_policy_version ON privacy_consent (policy_version);
 
 -- 插入初始数据
 INSERT INTO sys_role (id, name, code, description) VALUES (1, '管理员', 'ADMIN', '系统管理员');

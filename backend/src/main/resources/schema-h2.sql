@@ -120,7 +120,7 @@ CREATE TABLE IF NOT EXISTS data_quality_issue (
     dataset_id BIGINT NOT NULL,
     field_name VARCHAR(200),
     row_index INT,
-    value VARCHAR(500),
+    issue_value VARCHAR(500),
     z_score DOUBLE,
     iqr_score DOUBLE,
     outlier_type VARCHAR(50),
@@ -357,6 +357,9 @@ CREATE TABLE IF NOT EXISTS audit_log (
     deleted INT DEFAULT 0,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
+CREATE INDEX IF NOT EXISTS idx_audit_log_created_at ON audit_log (created_at);
+CREATE INDEX IF NOT EXISTS idx_audit_log_user_id ON audit_log (user_id);
+CREATE INDEX IF NOT EXISTS idx_audit_log_resource_type ON audit_log (resource_type);
 
 CREATE TABLE IF NOT EXISTS async_task (
     id BIGINT AUTO_INCREMENT PRIMARY KEY,
@@ -463,6 +466,8 @@ CREATE TABLE IF NOT EXISTS backup_record (
     file_path VARCHAR(500),
     size_bytes BIGINT DEFAULT 0,
     error TEXT,
+    checksum VARCHAR(128),
+    offsite_path VARCHAR(500),
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     completed_at TIMESTAMP
 );
@@ -776,3 +781,19 @@ CREATE TABLE IF NOT EXISTS prediction_algorithm_config (
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
+
+-- 合同 14.2.1 隐私政策知情同意记录
+CREATE TABLE IF NOT EXISTS privacy_consent (
+    id BIGINT AUTO_INCREMENT PRIMARY KEY,
+    user_id BIGINT,
+    username VARCHAR(50),
+    policy_version VARCHAR(50) NOT NULL,
+    consent_type VARCHAR(20),
+    ip_address VARCHAR(50),
+    user_agent VARCHAR(500),
+    tenant_id BIGINT DEFAULT 1,
+    consent_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS idx_privacy_consent_user_id ON privacy_consent (user_id);
+CREATE INDEX IF NOT EXISTS idx_privacy_consent_policy_version ON privacy_consent (policy_version);

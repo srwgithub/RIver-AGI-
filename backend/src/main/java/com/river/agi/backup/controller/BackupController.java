@@ -119,4 +119,19 @@ public class BackupController {
         }
         return ResponseEntity.ok(result);
     }
+
+    @PostMapping("/{backupId}/verify")
+    public ResponseEntity<Map<String, Object>> verifyBackup(@PathVariable String backupId) {
+        Map<String, Object> result = new java.util.HashMap<>();
+        try {
+            Map<String, Object> verifyResult = backupService.verifyBackupIntegrity(backupId);
+            result.put("code", 200);
+            result.put("message", "Success");
+            result.put("data", verifyResult);
+        } catch (Exception e) {
+            result.put("code", 500);
+            result.put("message", "Failed to verify backup: " + e.getMessage());
+        }
+        return ResponseEntity.ok(result);
+    }
 }

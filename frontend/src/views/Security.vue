@@ -34,13 +34,17 @@
         <div class="stat-label">已完成扫描</div>
         <div class="stat-num">{{ dashboard.completedScans }}</div>
       </div>
-      <div class="stat-box danger">
-        <div class="stat-label">高风险</div>
-        <div class="stat-num">{{ dashboard.highRiskCount }}</div>
+      <div class="stat-box danger clickable" :class="{ active: activeRiskFilter === 'HIGH' }" @click="filterByRisk('HIGH')">
+        <div class="stat-label">高风险 <span class="filter-hint" v-if="activeRiskFilter === 'HIGH'">(筛选中)</span></div>
+        <div class="stat-num">{{ currentHighRiskCount }}</div>
       </div>
-      <div class="stat-box">
+      <div class="stat-box clickable" :class="{ active: activeRiskFilter === 'ALL' }" @click="filterByRisk('ALL')">
         <div class="stat-label">总风险数</div>
-        <div class="stat-num">{{ dashboard.totalRisks }}</div>
+        <div class="stat-num">{{ currentTotalRiskCount }}</div>
+      </div>
+      <div class="stat-box clickable" :class="{ active: activeRiskFilter === 'MEDIUM' }" @click="filterByRisk('MEDIUM')">
+        <div class="stat-label">中风险</div>
+        <div class="stat-num">{{ currentMediumRiskCount }}</div>
       </div>
     </section>
 
@@ -56,41 +60,45 @@
         </template>
         <el-descriptions :column="3" border>
           <el-descriptions-item label="扫描状态">{{ scanResult.status }}</el-descriptions-item>
-          <el-descriptions-item label="扫描字段数">{{ scanResult.totalFieldsScanned }}</el-descriptions-item>
+          <el-descriptions-item label="扫描字段数">{{ scanResult.totalFieldsScanned || 0 }}</el-descriptions-item>
           <el-descriptions-item label="敏感字段数">
-            <span class="danger-text">{{ scanResult.sensitiveFieldsFound }}</span>
+            <span v-if="scanResult.sensitiveFieldsFound > 0" class="danger-text">{{ scanResult.sensitiveFieldsFound }}</span>
+            <span v-else>0</span>
           </el-descriptions-item>
         </el-descriptions>
-        <div v-if="scanResult.scanSummaryJson && scanResult.scanSummaryJson.sensitiveFieldsFound > 0" class="risk-summary">
+        <div v-if="scanResult.sensitiveFieldsFound > 0" class="risk-summary">
           <h4>风险汇总</h4>
           <el-row :gutter="12">
             <el-col :span="8">
               <div class="summary-card danger">
-                <span>高风险</span><strong>{{ scanResult.scanSummaryJson.highRiskCount }}</strong>
+                <span>高风险</span><strong>{{ scanResult.highRiskCount || 0 }}</strong>
               </div>
             </el-col>
             <el-col :span="8">
               <div class="summary-card warn">
-                <span>中风险</span><strong>{{ scanResult.scanSummaryJson.mediumRiskCount }}</strong>
+                <span>中风险</span><strong>{{ scanResult.mediumRiskCount || 0 }}</strong>
               </div>
             </el-col>
             <el-col :span="8">
               <div class="summary-card">
-                <span>低风险</span><strong>{{ scanResult.scanSummaryJson.lowRiskCount }}</strong>
+                <span>低风险</span><strong>{{ scanResult.lowRiskCount || 0 }}</strong>
               </div>
             </el-col>
           </el-row>
         </div>
+        <div v-else-if="scanResult.status === 'COMPLETED'" class="no-risk-note">
+          <el-icon><InfoFilled /></el-icon> 本次扫描未发现敏感数据风险，数据集符合安全合规要求。
+        </div>
       </el-card>
 
-      <el-card v-if="risks.length > 0" class="panel">
+      <el-card v-if="filteredRisks.length > 0" class="panel">
         <template #header>
           <div class="panel-head">
-            <span>敏感数据风险 (共 {{ risks.length }} 项)</span>
+            <span>敏感数据风险 (共 {{ filteredRisks.length }} 项{{ activeRiskFilter === 'HIGH' ? '，仅显示高风险' : '' }})</span>
             <el-tag type="danger">重点审计</el-tag>
           </div>
         </template>
-        <el-table :data="risks" stripe>
+        <el-table :data="filteredRisks" stripe>
           <el-table-column prop="fieldName" label="字段名" width="150" />
           <el-table-column prop="sensitiveType" label="敏感类型" width="120">
             <template #default="scope">
@@ -113,8 +121,12 @@
         </el-table>
       </el-card>
 
-      <el-card v-if="scanResult && risks.length === 0" class="panel empty-panel">
-        <el-empty description="未检测到敏感数据风险" />
+      <el-card v-if="scanResult && filteredRisks.length === 0" class="panel empty-panel">
+        <el-empty :description="scanResult.status === 'COMPLETED' ? (activeRiskFilter === 'HIGH' ? '当前数据集无高风险项' : '未检测到敏感数据风险') : '当前数据集尚未完成安全扫描'" />
+      </el-card>
+
+      <el-card v-if="!scanResult" class="panel empty-panel">
+        <el-empty description="选择数据集后点击『安全扫描』开始检测" />
       </el-card>
     </section>
   </div>
@@ -131,6 +143,7 @@ const selectedDataset = ref('')
 const scanResult = ref(null)
 const risks = ref([])
 const riskLoading = ref(false)
+const activeRiskFilter = ref('ALL')
 const dashboard = ref({
   totalScans: 0,
   completedScans: 0,
@@ -138,6 +151,48 @@ const dashboard = ref({
   totalRisks: 0
 })
 const currentDatasetName = computed(() => datasets.value.find(ds => ds.id === selectedDataset.value)?.name || '')
+
+const filteredRisks = computed(() => {
+  if (activeRiskFilter.value === 'HIGH') {
+    return risks.value.filter(r => r.riskLevel === 'HIGH')
+  }
+  if (activeRiskFilter.value === 'MEDIUM') {
+    return risks.value.filter(r => r.riskLevel === 'MEDIUM')
+  }
+  if (activeRiskFilter.value === 'LOW') {
+    return risks.value.filter(r => r.riskLevel === 'LOW')
+  }
+  return risks.value
+})
+
+const currentHighRiskCount = computed(() => {
+  if (risks.value.length > 0) {
+    return risks.value.filter(r => r.riskLevel === 'HIGH').length
+  }
+  return dashboard.value.highRiskCount
+})
+
+const currentMediumRiskCount = computed(() => {
+  if (risks.value.length > 0) {
+    return risks.value.filter(r => r.riskLevel === 'MEDIUM').length
+  }
+  return dashboard.value.mediumRiskCount || 0
+})
+
+const currentTotalRiskCount = computed(() => {
+  if (risks.value.length > 0) {
+    return risks.value.length
+  }
+  return dashboard.value.totalRisks
+})
+
+const filterByRisk = (level) => {
+  if (activeRiskFilter.value === level) {
+    activeRiskFilter.value = 'ALL'
+  } else {
+    activeRiskFilter.value = level
+  }
+}
 
 onMounted(async () => {
   try {
@@ -149,11 +204,25 @@ onMounted(async () => {
       selectedDataset.value = Number(preferred.id)
       if (!activeId) localStorage.setItem('river_active_dataset_id', String(preferred.id))
       try {
-        const existing = await request.get(`/v1/security/datasets/${preferred.id}/risks`)
-        risks.value = Array.isArray(existing) ? existing : []
-        if (risks.value.length) scanResult.value = { status: 'COMPLETED' }
+        const existingRisks = await request.get(`/v1/security/datasets/${preferred.id}/risks`)
+        risks.value = Array.isArray(existingRisks) ? existingRisks : []
+        if (risks.value.length > 0) {
+          const highCount = risks.value.filter(r => r.riskLevel === 'HIGH').length
+          const mediumCount = risks.value.filter(r => r.riskLevel === 'MEDIUM').length
+          const lowCount = risks.value.filter(r => r.riskLevel === 'LOW').length
+          scanResult.value = {
+            status: 'COMPLETED',
+            totalFieldsScanned: risks.value.length > 0 ? Math.max(...risks.value.map(r => r.detectedCount || 1)) : 0,
+            sensitiveFieldsFound: risks.value.length,
+            highRiskCount: highCount,
+            mediumRiskCount: mediumCount,
+            lowRiskCount: lowCount
+          }
+        } else {
+          scanResult.value = null
+        }
       } catch (_) {
-        // No prior scan is a real empty state; the scan action remains available.
+        scanResult.value = null
       }
     }
   } catch (e) {
@@ -165,7 +234,6 @@ onMounted(async () => {
     dashboard.value = await request.get('/v1/security/dashboard')
   } catch (e) {
     console.error('加载安全看板失败:', e)
-    dashboard.value = { totalScans: 0, completedScans: 0, highRiskCount: 0, totalRisks: 0 }
   }
 })
 
@@ -174,15 +242,15 @@ const runScan = async () => {
     ElMessage.warning('请选择数据集')
     return
   }
+  riskLoading.value = true
   try {
-    scanResult.value = await request.post(`/v1/security/datasets/${selectedDataset.value}/scan`)
-    // The scan response already contains the latest findings; render them immediately
-    // instead of requiring a second click on "查看风险".
-    risks.value = (scanResult.value.scanResults || []).map((item, index) => ({
+    const result = await request.post(`/v1/security/datasets/${selectedDataset.value}/scan`)
+    scanResult.value = result
+    risks.value = (result.scanResults || []).map((item, index) => ({
       id: item.id || `${selectedDataset.value}-${index}`,
-      ...item,
-      fieldName: item.fieldName || item.columnName
+      ...item
     }))
+    activeRiskFilter.value = 'ALL'
     try {
       dashboard.value = await request.get('/v1/security/dashboard')
     } catch (_) {
@@ -191,6 +259,8 @@ const runScan = async () => {
     ElMessage.success('扫描完成')
   } catch (e) {
     ElMessage.error('扫描失败: ' + (e.message || '未知错误'))
+  } finally {
+    riskLoading.value = false
   }
 }
 
@@ -207,18 +277,30 @@ const viewRisks = async () => {
   riskLoading.value = true
   try {
     const data = await request.get(`/v1/security/datasets/${selectedDataset.value}/risks`)
-    risks.value = data || []
-    // Keep the result panel visible after a successful zero-result lookup.
-    // A completed query with no findings is different from an unqueried page.
-    scanResult.value = scanResult.value || { status: 'COMPLETED' }
+    risks.value = Array.isArray(data) ? data : []
+    if (risks.value.length > 0) {
+      const highCount = risks.value.filter(r => r.riskLevel === 'HIGH').length
+      const mediumCount = risks.value.filter(r => r.riskLevel === 'MEDIUM').length
+      const lowCount = risks.value.filter(r => r.riskLevel === 'LOW').length
+      scanResult.value = {
+        status: 'COMPLETED',
+        totalFieldsScanned: risks.value.length,
+        sensitiveFieldsFound: risks.value.length,
+        highRiskCount: highCount,
+        mediumRiskCount: mediumCount,
+        lowRiskCount: lowCount
+      }
+    } else {
+      scanResult.value = { status: 'COMPLETED', sensitiveFieldsFound: 0, highRiskCount: 0, mediumRiskCount: 0, lowRiskCount: 0 }
+    }
     if (!data || data.length === 0) {
-      ElMessage.info(scanResult.value?.status === 'COMPLETED'
-        ? '本次扫描未发现敏感数据风险'
-        : '该数据集暂无扫描风险记录，请先执行安全扫描')
+      ElMessage.info('本次扫描未发现敏感数据风险')
     }
   } catch (e) {
     ElMessage.error('获取风险失败: ' + (e.message || '未知错误'))
-  } finally { riskLoading.value = false }
+  } finally {
+    riskLoading.value = false
+  }
 }
 </script>
 
@@ -340,6 +422,34 @@ const viewRisks = async () => {
 
 .stat-box.danger .stat-num {
   color: #fb7185;
+}
+
+.stat-box.clickable {
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.stat-box.clickable:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 12px 32px rgba(15, 23, 42, 0.08);
+  border-color: #94a3b8;
+}
+
+.stat-box.clickable.active {
+  border-color: #165dff;
+  background: linear-gradient(135deg, #eff6ff 0%, #ffffff 100%);
+  box-shadow: 0 0 0 2px rgba(22, 93, 255, 0.2), 0 8px 24px rgba(15, 23, 42, 0.05);
+}
+
+.stat-box.clickable.active .stat-label {
+  color: #165dff;
+  font-weight: 700;
+}
+
+.filter-hint {
+  color: #165dff;
+  font-weight: 700;
+  font-size: 11px;
 }
 
 .content-grid {

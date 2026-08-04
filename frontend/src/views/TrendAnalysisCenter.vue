@@ -207,6 +207,13 @@ import * as echarts from 'echarts'
 import request from '../utils/request'
 import { getActiveDatasetId, onDatasetSync } from '../utils/workspaceSync'
 
+const safeData = (payload, fallback = null) => {
+  if (payload == null) return fallback
+  if (Array.isArray(payload)) return payload
+  if (typeof payload === 'object' && payload.data !== undefined) return payload.data
+  return payload
+}
+
 const router = useRouter()
 const datasets = ref([])
 const predictionTasks = ref([])
@@ -440,7 +447,7 @@ const onDatasetChange = async () => {
       selectTaskForDataset(selectedDataset.value)
     }
     const data = await request.get(`/v1/datasets/${selectedDataset.value}/fields`)
-    const rawFields = data.data || data || []
+    const rawFields = safeData(data, [])
     fieldTypes.value = {}
     fields.value = rawFields.map(field => {
       if (typeof field === 'string') return field
@@ -453,7 +460,7 @@ const onDatasetChange = async () => {
     await loadDashboardData()
     await ensureTaskDashboardData()
   } catch (error) {
-    ElMessage.error('字段加载失败')
+    ElMessage.error(`字段加载失败：${error.message || '未知错误'}`)
   }
 }
 
@@ -465,11 +472,11 @@ const recommendCharts = async () => {
   chartLoading.value = true
   try {
     const data = await request.post(`/v1/charts/recommend?datasetId=${selectedDataset.value}`)
-    recommendations.value = data.data || data || []
+    recommendations.value = safeData(data, [])
     ElMessage.success('图表推荐已生成')
   } catch (error) {
     if (requestId !== recommendationRequestId) return
-    ElMessage.error('图表推荐失败')
+    ElMessage.error(`图表推荐失败：${error.message || '未知错误'}`)
   } finally { chartLoading.value = false }
 }
 
@@ -486,13 +493,13 @@ const generateChart = async () => {
   chartLoading.value = true
   try {
     const data = await request.post(`/v1/charts/generate?datasetId=${selectedDataset.value}&chartType=${chartType.value}&xAxisField=${xAxisField.value}&yAxisField=${yAxisField.value}`)
-    chartData.value = data.data || data
+    chartData.value = safeData(data)
     await nextTick()
     renderChart()
     ElMessage.success('看板图表已生成')
   } catch (error) {
     chartData.value = null
-    ElMessage.error('生成图表失败')
+    ElMessage.error(`生成图表失败：${error.message || '未知错误'}`)
   } finally { chartLoading.value = false }
 }
 
@@ -656,7 +663,7 @@ onMounted(async () => {
       await onDatasetChange()
     }
   } catch (error) {
-    ElMessage.error('趋势分析数据加载失败')
+    ElMessage.error(`趋势分析数据加载失败：${error.message || '未知错误'}`)
   }
 })
 

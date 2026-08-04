@@ -6,7 +6,6 @@ import com.river.agi.security.entity.AuditLog;
 import com.river.agi.security.mapper.AuditLogMapper;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import jakarta.servlet.http.HttpServletRequest;
-import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.aspectj.lang.ProceedingJoinPoint;
 import org.aspectj.lang.annotation.Around;
@@ -23,18 +22,29 @@ import java.time.LocalDateTime;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.UUID;
+import java.util.concurrent.Executor;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 @Slf4j
 @Aspect
 @Component
-@RequiredArgsConstructor
 public class AuditLogAspect {
-    
+
     private final AuditLogMapper auditLogMapper;
     private final ObjectMapper objectMapper;
     private final SecurityUtils securityUtils;
+    private final Executor auditExecutor;
+
+    public AuditLogAspect(AuditLogMapper auditLogMapper,
+                          ObjectMapper objectMapper,
+                          SecurityUtils securityUtils,
+                          @org.springframework.beans.factory.annotation.Qualifier("taskExecutor") Executor auditExecutor) {
+        this.auditLogMapper = auditLogMapper;
+        this.objectMapper = objectMapper;
+        this.securityUtils = securityUtils;
+        this.auditExecutor = auditExecutor;
+    }
     
     private static final Pattern SENSITIVE_PATTERN = Pattern.compile(
             "(password|passwd|secret|token|key|authorization|credit_card|ssn|social_security)",
@@ -94,19 +104,19 @@ public class AuditLogAspect {
                 }
             }
             
-            saveAuditLog(action, resourceType, resourceId, resourceName, 
+            asyncSaveAuditLog(action, resourceType, resourceId, resourceName,
                     operationDetails, result, duration, traceId);
-            
+
             return returnValue;
         } catch (Exception e) {
             result = "FAILED";
             operationDetails = auditDetails(description,
                     "Error: " + maskSensitiveData(e.getMessage()), traceId);
             long duration = System.currentTimeMillis() - startTime;
-            
-            saveAuditLog(action, resourceType, resourceId, resourceName,
+
+            asyncSaveAuditLog(action, resourceType, resourceId, resourceName,
                     operationDetails, result, duration, traceId);
-            
+
             throw e;
         }
     }
@@ -126,46 +136,59 @@ public class AuditLogAspect {
         }
     }
     
-    private void saveAuditLog(String action, String resourceType, Long resourceId, 
-                               String resourceName, String operationDetails, String result,
-                               long duration, String traceId) {
+    private void asyncSaveAuditLog(String action, String resourceType, Long resourceId,
+                                   String resourceName, String operationDetails, String result,
+                                   long duration, String traceId) {
+        // SecurityContext and RequestContext are thread-local; capture them on the request thread
+        // before dispatching the DB insert to the async executor.
+        AuditLog auditLog = new AuditLog();
+        auditLog.setActionType(action);
+        auditLog.setResourceType(resourceType);
+        auditLog.setResourceId(resourceId);
+        auditLog.setResourceName(resourceName);
+
+        Authentication auth = SecurityContextHolder.getContext().getAuthentication();
+        if (auth != null && auth.isAuthenticated()) {
+            auditLog.setUsername(auth.getName());
+            try {
+                Long userId = securityUtils.getCurrentUserId(auth);
+                auditLog.setUserId(userId);
+            } catch (Exception e) {
+                log.warn("Failed to get user ID for audit log", e);
+            }
+        }
+
+        ServletRequestAttributes attributes = (ServletRequestAttributes) RequestContextHolder.getRequestAttributes();
+        if (attributes != null) {
+            HttpServletRequest request = attributes.getRequest();
+            auditLog.setIpAddress(getClientIp(request));
+            auditLog.setUserAgent(truncate(request.getHeader("User-Agent"), 500));
+            auditLog.setRequestMethod(request.getMethod());
+            auditLog.setRequestPath(request.getRequestURI());
+            request.setAttribute("traceId", traceId);
+        }
+
+        auditLog.setOperationDetails(truncate(operationDetails, 2000));
+        auditLog.setResult(result);
+        auditLog.setDurationMs(duration);
+        auditLog.setCreatedAt(LocalDateTime.now());
+
         try {
-            AuditLog auditLog = new AuditLog();
-            auditLog.setActionType(action);
-            auditLog.setResourceType(resourceType);
-            auditLog.setResourceId(resourceId);
-            auditLog.setResourceName(resourceName);
-            
-            Authentication auth = SecurityContextHolder.getContext().getAuthentication();
-            if (auth != null && auth.isAuthenticated()) {
-                auditLog.setUsername(auth.getName());
+            auditExecutor.execute(() -> {
                 try {
-                    Long userId = securityUtils.getCurrentUserId(auth);
-                    auditLog.setUserId(userId);
+                    auditLogMapper.insert(auditLog);
                 } catch (Exception e) {
-                    log.warn("Failed to get user ID for audit log", e);
+                    log.error("Failed to insert audit log asynchronously", e);
                 }
-            }
-            
-            ServletRequestAttributes attributes = (ServletRequestAttributes) RequestContextHolder.getRequestAttributes();
-            if (attributes != null) {
-                HttpServletRequest request = attributes.getRequest();
-                auditLog.setIpAddress(getClientIp(request));
-                auditLog.setUserAgent(truncate(request.getHeader("User-Agent"), 500));
-                auditLog.setRequestMethod(request.getMethod());
-                auditLog.setRequestPath(request.getRequestURI());
-                
-                request.setAttribute("traceId", traceId);
-            }
-            
-            auditLog.setOperationDetails(truncate(operationDetails, 2000));
-            auditLog.setResult(result);
-            auditLog.setDurationMs(duration);
-            auditLog.setCreatedAt(LocalDateTime.now());
-            
-            auditLogMapper.insert(auditLog);
+            });
         } catch (Exception e) {
-            log.error("Failed to save audit log", e);
+            // Executor queue saturated — fall back to synchronous insert so the audit trail is not lost.
+            log.warn("Audit executor rejected task, falling back to synchronous insert", e);
+            try {
+                auditLogMapper.insert(auditLog);
+            } catch (Exception ex) {
+                log.error("Failed to save audit log (fallback)", ex);
+            }
         }
     }
     

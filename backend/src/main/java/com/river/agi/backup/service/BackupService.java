@@ -13,12 +13,14 @@ import com.river.agi.common.annotation.AuditOperation;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.stereotype.Service;
 
 import java.io.*;
 import java.nio.file.*;
+import java.security.MessageDigest;
 import java.time.LocalDateTime;
 import java.util.*;
 import java.util.zip.ZipEntry;
@@ -28,15 +30,23 @@ import java.util.zip.ZipOutputStream;
 @Service
 @RequiredArgsConstructor
 public class BackupService {
-    
+
     private final BackupRecordMapper backupRecordMapper;
     private final DatasetMapper datasetMapper;
     private final SecurityScanTaskMapper securityScanTaskMapper;
     private final SensitiveDataDetectionMapper sensitiveDataDetectionMapper;
     private final ObjectMapper objectMapper;
-    
+
     private static final String BACKUP_DIR = "./backups";
     private static final int MAX_BACKUPS = 10;
+
+    /** 异地备份目录（合同 14.1.3 异地备份策略） */
+    @Value("${backup.offsite-dir:./backups-offsite}")
+    private String offsiteDir;
+
+    /** 是否启用异地备份 */
+    @Value("${backup.offsite-enabled:false}")
+    private boolean offsiteEnabled;
     
     @Scheduled(cron = "0 0 3 * * ?")
     public void scheduledBackup() {
@@ -74,14 +84,25 @@ public class BackupService {
                 totalSize += backupSecurityData(zos);
                 totalSize += backupSystemConfig(zos);
             }
-            
+
+            // 计算备份文件 SHA-256 校验值（合同 14.1.3 备份完整性校验）
+            String checksum = sha256(backupPath);
+
+            // 异地备份副本（合同 14.1.3 异地备份策略）
+            String offsitePath = null;
+            if (offsiteEnabled) {
+                offsitePath = replicateOffsite(backupPath, backupId);
+            }
+
             record.setStatus("COMPLETED");
             record.setSizeBytes(totalSize);
             record.setFilePath(backupPath.toString());
+            record.setChecksum(checksum);
+            record.setOffsitePath(offsitePath);
             record.setCompletedAt(LocalDateTime.now());
             backupRecordMapper.updateById(record);
-            
-            log.info("Full backup created: {} ({} bytes)", backupId, totalSize);
+
+            log.info("Full backup created: {} ({} bytes, checksum={})", backupId, totalSize, checksum);
             return backupId;
             
         } catch (Exception e) {
@@ -316,12 +337,12 @@ public class BackupService {
     
     public Map<String, Object> getBackupStatus() {
         Map<String, Object> status = new LinkedHashMap<>();
-        
+
         List<BackupRecord> allBackups = listBackups();
         long completedCount = allBackups.stream()
             .filter(b -> "COMPLETED".equals(b.getStatus()))
             .count();
-        
+
         status.put("totalBackups", allBackups.size());
         status.put("completedBackups", completedCount);
         status.put("failedBackups", allBackups.stream()
@@ -330,7 +351,124 @@ public class BackupService {
         status.put("lastBackupTime", allBackups.isEmpty() ? null : allBackups.get(0).getCreatedAt());
         status.put("backupDirectory", BACKUP_DIR);
         status.put("maxBackups", MAX_BACKUPS);
-        
+        status.put("offsiteEnabled", offsiteEnabled);
+        status.put("offsiteDirectory", offsiteDir);
+
         return status;
+    }
+
+    /**
+     * 计算文件 SHA-256 校验值（合同 14.1.3 备份完整性校验）。
+     */
+    private String sha256(Path path) throws Exception {
+        MessageDigest digest = MessageDigest.getInstance("SHA-256");
+        try (InputStream is = Files.newInputStream(path)) {
+            byte[] buffer = new byte[8192];
+            int read;
+            while ((read = is.read(buffer)) != -1) {
+                digest.update(buffer, 0, read);
+            }
+        }
+        byte[] hash = digest.digest();
+        StringBuilder sb = new StringBuilder();
+        for (byte b : hash) {
+            sb.append(String.format("%02x", b));
+        }
+        return sb.toString();
+    }
+
+    /**
+     * 复制备份文件到异地目录（合同 14.1.3 异地备份策略）。
+     */
+    private String replicateOffsite(Path sourceBackupPath, String backupId) {
+        try {
+            Path offsite = Paths.get(offsiteDir);
+            Files.createDirectories(offsite);
+            Path target = offsite.resolve(sourceBackupPath.getFileName().toString());
+            Files.copy(sourceBackupPath, target, StandardCopyOption.REPLACE_EXISTING);
+            log.info("Replicated backup {} to offsite location: {}", backupId, target);
+            return target.toString();
+        } catch (Exception e) {
+            log.warn("Failed to replicate backup {} to offsite location: {}", backupId, e.getMessage());
+            return null;
+        }
+    }
+
+    /**
+     * 验证备份完整性（合同 14.1.3 恢复验证机制）。
+     * 重新计算备份文件 SHA-256 并与记录的 checksum 比对，同时验证 ZIP 可读取。
+     */
+    @AuditOperation(action = "VERIFY_BACKUP", resourceType = "BACKUP", description = "Verify backup integrity")
+    public Map<String, Object> verifyBackupIntegrity(String backupId) {
+        BackupRecord record = getBackup(backupId);
+        Map<String, Object> result = new LinkedHashMap<>();
+        result.put("backupId", backupId);
+
+        if (record == null) {
+            result.put("status", "NOT_FOUND");
+            result.put("integrityValid", false);
+            result.put("message", "备份记录不存在");
+            return result;
+        }
+
+        result.put("recordedChecksum", record.getChecksum());
+
+        Path backupPath = Paths.get(record.getFilePath());
+        if (!Files.exists(backupPath)) {
+            result.put("status", "FILE_MISSING");
+            result.put("integrityValid", false);
+            result.put("message", "备份文件不存在: " + record.getFilePath());
+            return result;
+        }
+
+        try {
+            String actualChecksum = sha256(backupPath);
+            result.put("actualChecksum", actualChecksum);
+            boolean checksumMatch = record.getChecksum() != null
+                    && record.getChecksum().equalsIgnoreCase(actualChecksum);
+            result.put("checksumMatch", checksumMatch);
+
+            // 验证 ZIP 可正常读取
+            boolean zipReadable = verifyZipReadable(backupPath);
+            result.put("zipReadable", zipReadable);
+
+            // 异地副本校验
+            boolean offsiteValid = false;
+            if (record.getOffsitePath() != null) {
+                Path offsitePath = Paths.get(record.getOffsitePath());
+                offsiteValid = Files.exists(offsitePath)
+                        && sha256(offsitePath).equalsIgnoreCase(actualChecksum);
+            }
+            result.put("offsiteValid", offsiteValid);
+
+            boolean overallValid = checksumMatch && zipReadable;
+            result.put("integrityValid", overallValid);
+            result.put("status", overallValid ? "VERIFIED" : "CORRUPTED");
+            result.put("verifiedAt", LocalDateTime.now());
+            result.put("message", overallValid ? "备份完整性校验通过" : "备份完整性校验失败");
+            return result;
+        } catch (Exception e) {
+            result.put("status", "ERROR");
+            result.put("integrityValid", false);
+            result.put("message", "校验异常: " + e.getMessage());
+            log.error("Backup integrity verification failed for {}", backupId, e);
+            return result;
+        }
+    }
+
+    private boolean verifyZipReadable(Path backupPath) {
+        try (java.util.zip.ZipInputStream zis = new java.util.zip.ZipInputStream(
+                new FileInputStream(backupPath.toFile()))) {
+            java.util.zip.ZipEntry entry;
+            int entryCount = 0;
+            while ((entry = zis.getNextEntry()) != null) {
+                entryCount++;
+                zis.closeEntry();
+            }
+            return entryCount > 0;
+        } catch (Exception e) {
+            log.warn("ZIP read verification failed for {}: {}", backupPath, e.getMessage());
+            return false;
+        }
     }
 }

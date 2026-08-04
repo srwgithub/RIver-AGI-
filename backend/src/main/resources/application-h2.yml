@@ -23,6 +23,10 @@ spring:
     username: sa
     password:
     driver-class-name: org.h2.Driver
+    hikari:
+      maximum-pool-size: 50
+      minimum-idle: 10
+      connection-timeout: 10000
   
   # H2 Console
   h2:
@@ -60,7 +64,6 @@ minio:
 mybatis-plus:
   configuration:
     map-underscore-to-camel-case: true
-    log-impl: org.apache.ibatis.logging.stdout.StdOutImpl
   global-config:
     db-config:
       id-type: auto

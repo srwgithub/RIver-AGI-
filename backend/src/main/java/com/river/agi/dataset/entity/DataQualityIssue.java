@@ -1,6 +1,7 @@
 package com.river.agi.dataset.entity;
 
 import com.baomidou.mybatisplus.annotation.IdType;
+import com.baomidou.mybatisplus.annotation.TableField;
 import com.baomidou.mybatisplus.annotation.TableId;
 import com.baomidou.mybatisplus.annotation.TableName;
 import lombok.Data;
@@ -16,6 +17,7 @@ public class DataQualityIssue {
     private Long datasetId;
     private String fieldName;
     private Integer rowIndex;
+    @TableField("issue_value")
     private String value;
     private Double zScore;
     private Double iqrScore;

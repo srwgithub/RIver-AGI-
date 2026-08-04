@@ -10,7 +10,10 @@ import com.river.agi.auth.mapper.UserMapper;
 import com.river.agi.auth.util.JwtUtil;
 import com.river.agi.common.BusinessException;
 import com.river.agi.common.annotation.AuditOperation;
+import com.river.agi.privacy.service.PrivacyService;
+import jakarta.servlet.http.HttpServletRequest;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.security.authentication.AuthenticationManager;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.userdetails.UserDetails;
@@ -20,16 +23,18 @@ import org.springframework.stereotype.Service;
 import java.time.LocalDateTime;
 import java.util.List;
 
+@Slf4j
 @Service
 @RequiredArgsConstructor
 public class AuthService {
-    
+
     private final UserMapper userMapper;
     private final RoleMapper roleMapper;
     private final PasswordEncoder passwordEncoder;
     private final JwtUtil jwtUtil;
     private final AuthenticationManager authenticationManager;
     private final UserDetailsServiceImpl userDetailsService;
+    private final PrivacyService privacyService;
     
     public LoginResponse login(LoginRequest request) {
         authenticationManager.authenticate(
@@ -65,13 +70,17 @@ public class AuthService {
     }
     
     @AuditOperation(action = "USER_REGISTER", resourceType = "USER", description = "Register new user account")
-    public UserResponse register(RegisterRequest request) {
+    public UserResponse register(RegisterRequest request, HttpServletRequest httpRequest) {
+        // 隐私政策知情同意校验（合同 14.2.1）
+        if (!Boolean.TRUE.equals(request.getPrivacyConsent())) {
+            throw new BusinessException("必须同意隐私政策后方可注册");
+        }
         // Check if username already exists
         if (userMapper.selectOne(new com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper<User>()
                 .eq(User::getUsername, request.getUsername())) != null) {
             throw new BusinessException("Username already exists");
         }
-        
+
         User user = new User();
         user.setUsername(request.getUsername());
         user.setPassword(passwordEncoder.encode(request.getPassword()));
@@ -80,9 +89,34 @@ public class AuthService {
         user.setStatus(1);
         user.setCreatedAt(LocalDateTime.now());
         user.setUpdatedAt(LocalDateTime.now());
-        
+
         userMapper.insert(user);
+
+        // 记录隐私政策同意（合同 14.2.1 知情同意）
+        String ip = getClientIp(httpRequest);
+        String ua = httpRequest.getHeader("User-Agent");
+        try {
+            privacyService.recordConsent(user.getId(), user.getUsername(), "REGISTER", ip, ua);
+        } catch (Exception e) {
+            // 同意记录失败不应阻断注册，仅记录日志
+            log.warn("Failed to record privacy consent for user {}: {}", user.getId(), e.getMessage());
+        }
+
         return convertToUserResponse(user);
+    }
+
+    private String getClientIp(HttpServletRequest request) {
+        String ip = request.getHeader("X-Forwarded-For");
+        if (ip == null || ip.isEmpty() || "unknown".equalsIgnoreCase(ip)) {
+            ip = request.getHeader("Proxy-Client-IP");
+        }
+        if (ip == null || ip.isEmpty() || "unknown".equalsIgnoreCase(ip)) {
+            ip = request.getHeader("WL-Proxy-Client-IP");
+        }
+        if (ip == null || ip.isEmpty() || "unknown".equalsIgnoreCase(ip)) {
+            ip = request.getRemoteAddr();
+        }
+        return ip;
     }
     
     public UserResponse getCurrentUser(String username) {

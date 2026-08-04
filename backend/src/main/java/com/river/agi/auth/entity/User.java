@@ -5,6 +5,7 @@ import com.baomidou.mybatisplus.annotation.TableId;
 import com.baomidou.mybatisplus.annotation.TableLogic;
 import com.baomidou.mybatisplus.annotation.TableName;
 import com.baomidou.mybatisplus.annotation.Version;
+import com.river.agi.common.annotation.EncryptField;
 import lombok.Data;
 
 import java.time.LocalDateTime;
@@ -18,7 +19,9 @@ public class User {
     private String username;
     private String password;
     private String email;
+    @EncryptField
     private String phone;
+    @EncryptField
     private String realName;
     private Integer status;
     private Long createdBy;

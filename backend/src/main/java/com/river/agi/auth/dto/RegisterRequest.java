@@ -1,6 +1,7 @@
 package com.river.agi.auth.dto;
 
 import jakarta.validation.constraints.Email;
+import jakarta.validation.constraints.AssertTrue;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.Size;
 import lombok.Data;
@@ -15,4 +16,11 @@ public class RegisterRequest {
     @Email(message = "Invalid email format")
     private String email;
     private String realName;
+
+    /**
+     * 隐私政策知情同意（合同 14.2.1）。
+     * 注册即视为同意《隐私政策》，必须勾选。通过 @AssertTrue 强制校验。
+     */
+    @AssertTrue(message = "必须同意隐私政策后方可注册")
+    private Boolean privacyConsent;
 }

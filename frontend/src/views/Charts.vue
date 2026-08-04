@@ -73,6 +73,13 @@ import * as echarts from 'echarts'
 import request from '../utils/request'
 import { getActiveDatasetId, onDatasetSync } from '../utils/workspaceSync'
 
+const safeData = (payload, fallback = null) => {
+  if (payload == null) return fallback
+  if (Array.isArray(payload)) return payload
+  if (typeof payload === 'object' && payload.data !== undefined) return payload.data
+  return payload
+}
+
 const datasets = ref([])
 const selectedDataset = ref('')
 const chartType = ref('LINE')
@@ -116,7 +123,7 @@ const onDatasetChange = async () => {
     const saved = readChartState()
     const restoring = String(saved.selectedDataset) === String(selectedDataset.value)
     const data = await request.get(`/v1/datasets/${selectedDataset.value}/fields`)
-    const rawFields = data.data || data || []
+    const rawFields = safeData(data, [])
     fieldTypes.value = {}
     fields.value = rawFields.map(field => {
       if (typeof field === 'string') return field
@@ -145,6 +152,7 @@ const onDatasetChange = async () => {
     await recommendCharts()
   } catch (e) {
     console.error('加载字段失败:', e)
+    ElMessage.error(`加载字段失败：${e.message || '未知错误'}`)
   }
 }
 
@@ -165,7 +173,7 @@ onMounted(async () => {
     }
   } catch (e) {
     console.error('加载数据集失败:', e)
-    ElMessage.error('加载数据集失败')
+    ElMessage.error(`加载数据集失败：${e.message || '未知错误'}`)
   }
 })
 
@@ -183,7 +191,7 @@ const recommendCharts = async () => {
   recommendLoading.value = true
   try {
     const data = await request.post(`/v1/charts/recommend?datasetId=${selectedDataset.value}`)
-    recommendations.value = data.data || data
+    recommendations.value = safeData(data, [])
     if (!recommendations.value.length) {
       ElMessage.info('后端未返回推荐，使用当前字段生成默认图表')
       if (xAxisField.value && yAxisField.value) await generateChart(false)
@@ -198,7 +206,7 @@ const recommendCharts = async () => {
   } catch (e) {
     if (requestId !== recommendationRequestId) return
     console.error('获取图表推荐失败:', e)
-    ElMessage.error('获取图表推荐失败')
+    ElMessage.error(`获取图表推荐失败：${e.message || '未知错误'}`)
     recommendations.value = []
     chartData.value = null
     report.value = null
@@ -223,14 +231,14 @@ const generateChart = async (showMessage = true) => {
   }
   try {
     const data = await request.post(`/v1/charts/generate?datasetId=${selectedDataset.value}&chartType=${chartType.value}&xAxisField=${xAxisField.value}&yAxisField=${yAxisField.value}`)
-    chartData.value = data.data || data
+    chartData.value = safeData(data)
     await nextTick()
     renderChart()
     if (showMessage) ElMessage.success('图表已生成')
     persistChartState()
   } catch (e) {
     console.error('生成图表失败:', e)
-    ElMessage.error('生成图表失败')
+    ElMessage.error(`生成图表失败：${e.message || '未知错误'}`)
     chartData.value = null
   }
 }
@@ -278,7 +286,7 @@ const generateReport = async () => {
   }
   try {
     const data = await request.post(`/v1/charts/reports?datasetId=${selectedDataset.value}&reportType=FULL`)
-    report.value = data.data || data
+    report.value = safeData(data)
     persistChartState()
     ElMessage.success('报告生成成功')
   } catch (e) {
