@@ -105,6 +105,51 @@ CREATE TABLE IF NOT EXISTS analysis_task (
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
+CREATE TABLE IF NOT EXISTS dataset_profile (
+    id BIGINT AUTO_INCREMENT PRIMARY KEY,
+    dataset_id BIGINT NOT NULL,
+    profile_json CLOB,
+    tenant_id BIGINT DEFAULT 1,
+    deleted INT DEFAULT 0,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS data_quality_issue (
+    id BIGINT AUTO_INCREMENT PRIMARY KEY,
+    tenant_id BIGINT DEFAULT 1,
+    dataset_id BIGINT NOT NULL,
+    field_name VARCHAR(200),
+    row_index INT,
+    value VARCHAR(500),
+    z_score DOUBLE,
+    iqr_score DOUBLE,
+    outlier_type VARCHAR(50),
+    created_by BIGINT,
+    deleted INT DEFAULT 0,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS field_statistics (
+    id BIGINT AUTO_INCREMENT PRIMARY KEY,
+    analysis_task_id BIGINT NOT NULL,
+    column_name VARCHAR(200),
+    statistics_json CLOB,
+    tenant_id BIGINT DEFAULT 1,
+    deleted INT DEFAULT 0,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS outlier_detection (
+    id BIGINT AUTO_INCREMENT PRIMARY KEY,
+    analysis_task_id BIGINT NOT NULL,
+    column_name VARCHAR(200),
+    outlier_count INT,
+    outlier_indices CLOB,
+    tenant_id BIGINT DEFAULT 1,
+    deleted INT DEFAULT 0,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
 CREATE TABLE IF NOT EXISTS label_schema (
     id BIGINT AUTO_INCREMENT PRIMARY KEY,
     name VARCHAR(100) NOT NULL,
@@ -650,6 +695,84 @@ CREATE TABLE IF NOT EXISTS system_config (
     version INT NOT NULL DEFAULT 1,
     snapshot BOOLEAN NOT NULL DEFAULT FALSE,
     updated_by BIGINT,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS chart_config (
+    id BIGINT AUTO_INCREMENT PRIMARY KEY,
+    dataset_id BIGINT NOT NULL,
+    chart_type VARCHAR(50),
+    title VARCHAR(200),
+    x_axis_field VARCHAR(100),
+    y_axis_field VARCHAR(100),
+    config_json CLOB,
+    tenant_id BIGINT DEFAULT 1,
+    deleted INT DEFAULT 0,
+    created_by BIGINT,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS export_record (
+    id BIGINT AUTO_INCREMENT PRIMARY KEY,
+    task_id BIGINT NOT NULL,
+    task_type VARCHAR(50),
+    export_format VARCHAR(20),
+    file_path VARCHAR(500),
+    file_size BIGINT DEFAULT 0,
+    exported_by BIGINT,
+    status VARCHAR(20) DEFAULT 'PENDING',
+    row_count INT DEFAULT 0,
+    masked BOOLEAN DEFAULT TRUE,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    completed_at TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS collection_task (
+    id BIGINT AUTO_INCREMENT PRIMARY KEY,
+    name VARCHAR(200) NOT NULL,
+    source_type VARCHAR(50),
+    source_config_json CLOB,
+    status VARCHAR(20) DEFAULT 'PENDING',
+    schedule_config_json CLOB,
+    last_run_at TIMESTAMP,
+    next_run_at TIMESTAMP,
+    error_message VARCHAR(1000),
+    tenant_id BIGINT DEFAULT 1,
+    deleted INT DEFAULT 0,
+    created_by BIGINT,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS annotation_task_assignee (
+    id BIGINT AUTO_INCREMENT PRIMARY KEY,
+    task_id BIGINT NOT NULL,
+    user_id BIGINT NOT NULL,
+    role VARCHAR(20),
+    status VARCHAR(20) DEFAULT 'PENDING',
+    assigned_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    completed_at TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS annotation_history (
+    id BIGINT AUTO_INCREMENT PRIMARY KEY,
+    item_id BIGINT NOT NULL,
+    annotator_id BIGINT,
+    old_label VARCHAR(500),
+    new_label VARCHAR(500),
+    change_type VARCHAR(50),
+    note VARCHAR(500),
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS prediction_algorithm_config (
+    id BIGINT AUTO_INCREMENT PRIMARY KEY,
+    algorithm_type VARCHAR(50) NOT NULL,
+    config_json CLOB,
+    enabled BOOLEAN DEFAULT TRUE,
+    tenant_id BIGINT DEFAULT 1,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );

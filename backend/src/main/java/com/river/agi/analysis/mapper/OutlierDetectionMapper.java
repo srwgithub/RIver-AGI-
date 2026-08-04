@@ -14,7 +14,6 @@ public interface OutlierDetectionMapper extends BaseMapper<OutlierDetection> {
     @Select("SELECT * FROM outlier_detection WHERE analysis_task_id = #{analysisTaskId} AND deleted = 0")
     List<OutlierDetection> selectByAnalysisTaskId(@Param("analysisTaskId") Long analysisTaskId);
     
-    default List<OutlierDetection> selectByDatasetId(Long datasetId) {
-        return selectByAnalysisTaskId(datasetId);
-    }
+    @Select("SELECT * FROM outlier_detection WHERE analysis_task_id IN (SELECT id FROM analysis_task WHERE dataset_id = #{datasetId}) AND deleted = 0")
+    List<OutlierDetection> selectByDatasetId(@Param("datasetId") Long datasetId);
 }

@@ -11,6 +11,6 @@ import java.util.List;
 @Mapper
 public interface FieldStatisticsMapper extends BaseMapper<FieldStatistics> {
     
-    @Select("SELECT * FROM field_statistics WHERE dataset_id = #{datasetId} AND deleted = 0")
+    @Select("SELECT * FROM dataset_profile WHERE dataset_id = #{datasetId} AND deleted = 0")
     List<FieldStatistics> selectByDatasetId(@Param("datasetId") Long datasetId);
 }
