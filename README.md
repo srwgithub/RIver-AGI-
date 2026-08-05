@@ -542,6 +542,10 @@ chmod +x ops/health-check.sh
 - `backend/docker-compose.yml`：Java、Python、MySQL、Redis、RabbitMQ、MinIO 编排和健康依赖。
 - `ops/nginx.conf.example`：HTTPS、API 反向代理和 Vue SPA 路由回退模板。
 - `qa/performance_smoke.py`：并发 smoke 测试脚本。
+- `qa/load_test_6modules.py`：六大模块 200 并发接口压测；成功率必须为 100% 且 P95 不超过 1.5 秒才判定通过。
+- `qa/deep_learning_acceptance.mjs`：真实调用 Python 引擎验证 TensorFlow/Keras MLP、PyTorch LSTM 和 Transformer 的训练与预测。
+- `qa/operational_acceptance.mjs`：真实验证安全扫描、风险查看、角色权限授权、备份校验/恢复和审计追溯。
+- `qa/contract_evidence_matrix.md`：合同条款与可复核证据矩阵，区分本机通过和目标环境/第三方待证明项。
 - `ops/security-baseline.sh`：敏感配置和生产文件安全基线检查。
 
 运行示例：

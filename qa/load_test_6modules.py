@@ -127,7 +127,9 @@ def test_module(name, path, token):
         "rps": len(results) / elapsed_wall if elapsed_wall > 0 else 0.0,
         "elapsed_wall_s": elapsed_wall,
         "status_counts": status_counts,
-        "passed": percentile(latencies, 95) <= P95_THRESHOLD_MS,
+        # Latency alone is not a successful business response. A 500 response
+        # must fail the contractual smoke gate even when it is fast.
+        "passed": successes == len(results) and percentile(latencies, 95) <= P95_THRESHOLD_MS,
     }
 
 
@@ -203,7 +205,9 @@ def main():
         )
         print(row)
     print("-" * 110)
-    overall = "整体达标 (6/6 接口 P95 <= 1500ms)" if all_passed else "整体不达标 (存在接口 P95 > 1500ms)"
+    overall = ("整体达标 (6/6 接口成功率 100% 且 P95 <= 1500ms)"
+               if all_passed else
+               "整体不达标 (存在失败响应或接口 P95 > 1500ms)")
     print(f"整体结论: {overall}")
     print("=" * 110)
 

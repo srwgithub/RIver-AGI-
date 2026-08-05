@@ -89,6 +89,17 @@ class LSTMModel:
             y_seq.append(y[i + sequence_length])
         return np.array(X_seq), np.array(y_seq)
 
+    @staticmethod
+    def _prediction_sequences(X, sequence_length):
+        """Build inference windows and left-pad short requests with the first row."""
+        if len(X) == 0:
+            raise ValueError("Prediction dataset must contain at least one row")
+        if len(X) < sequence_length:
+            padding = np.repeat(X[[0]], sequence_length - len(X), axis=0)
+            return np.array([np.concatenate([padding, X], axis=0)])
+        return np.array([X[i:i + sequence_length]
+                         for i in range(len(X) - sequence_length + 1)])
+
     def train(self, X, y, task_type="regression", params=None):
         """
         Train the LSTM model on provided data.
@@ -164,7 +175,8 @@ class LSTMModel:
             for batch_X, batch_y in train_loader:
                 optimizer.zero_grad()
                 output = self.network(batch_X)
-                loss = criterion(output.squeeze() if task_type == "regression" else output, batch_y)
+                loss = criterion(output.squeeze(-1) if task_type == "regression" else output,
+                                 batch_y.squeeze(-1) if task_type == "regression" else batch_y)
                 loss.backward()
                 optimizer.step()
                 train_loss += loss.item()
@@ -176,7 +188,8 @@ class LSTMModel:
             with torch.no_grad():
                 for batch_X, batch_y in val_loader:
                     output = self.network(batch_X)
-                    loss = criterion(output.squeeze() if task_type == "regression" else output, batch_y)
+                    loss = criterion(output.squeeze(-1) if task_type == "regression" else output,
+                                     batch_y.squeeze(-1) if task_type == "regression" else batch_y)
                     val_loss += loss.item()
 
             val_loss /= len(val_loader)
@@ -243,9 +256,7 @@ class LSTMModel:
         seq_len = sequence_length or self.metadata.get("sequence_length", 10)
         X_scaled = self._preprocess(X)
 
-        X_seq, _ = self._create_sequences(
-            X_scaled, np.zeros(len(X_scaled)), seq_len
-        )
+        X_seq = self._prediction_sequences(X_scaled, seq_len)
 
         X_tensor = torch.FloatTensor(X_seq)
         self.network.eval()
