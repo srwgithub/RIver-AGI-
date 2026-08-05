@@ -16,7 +16,7 @@ import java.util.Map;
 @RestController
 @RequestMapping({"/api/v1/backups", "/api/v1/backup/records"})
 @RequiredArgsConstructor
-@PreAuthorize("hasRole('ADMIN')")
+@PreAuthorize("hasAuthority('ROLE_ADMIN')")
 public class BackupController {
     
     private final BackupService backupService;

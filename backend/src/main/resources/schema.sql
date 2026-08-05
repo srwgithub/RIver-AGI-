@@ -572,7 +572,11 @@ CREATE TABLE IF NOT EXISTS security_policy (
     policy_type VARCHAR(50) NOT NULL,
     classification VARCHAR(30) DEFAULT 'INTERNAL',
     rules_json TEXT,
+    rules TEXT,
+    description VARCHAR(500),
+    priority INT DEFAULT 0,
     enabled BOOLEAN DEFAULT TRUE,
+    is_enabled BOOLEAN DEFAULT TRUE,
     created_by BIGINT,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
@@ -618,9 +622,40 @@ CREATE TABLE IF NOT EXISTS privacy_consent (
 CREATE INDEX IF NOT EXISTS idx_privacy_consent_user_id ON privacy_consent (user_id);
 CREATE INDEX IF NOT EXISTS idx_privacy_consent_policy_version ON privacy_consent (policy_version);
 
+-- 采集任务
+CREATE TABLE IF NOT EXISTS collection_task (
+    id BIGINT AUTO_INCREMENT PRIMARY KEY,
+    name VARCHAR(200) NOT NULL,
+    source_type VARCHAR(50),
+    media_type VARCHAR(50),
+    source_uri VARCHAR(500),
+    source_config_json TEXT,
+    dataset_id BIGINT,
+    label_schema_id BIGINT,
+    cleaning_config_json TEXT,
+    cleaning_summary_json TEXT,
+    annotation_rule_json TEXT,
+    collaboration_mode VARCHAR(20) DEFAULT 'SINGLE',
+    assigned_annotators VARCHAR(500),
+    status VARCHAR(20) DEFAULT 'PENDING',
+    schedule_config_json TEXT,
+    last_run_at TIMESTAMP NULL DEFAULT NULL,
+    next_run_at TIMESTAMP NULL DEFAULT NULL,
+    error_message VARCHAR(1000),
+    total_items INT DEFAULT 0,
+    completed_items INT DEFAULT 0,
+    tenant_id BIGINT DEFAULT 1,
+    deleted INT DEFAULT 0,
+    created_by BIGINT,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    INDEX idx_collection_dataset (dataset_id),
+    INDEX idx_collection_status (status)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
 -- 插入初始数据
-INSERT INTO sys_role (id, name, code, description) VALUES (1, '管理员', 'ADMIN', '系统管理员');
-INSERT INTO sys_role (id, name, code, description) VALUES (2, '用户', 'USER', '普通用户');
+INSERT INTO sys_role (id, name, code, description, deleted) VALUES (1, '管理员', 'ADMIN', '系统管理员', 0);
+INSERT INTO sys_role (id, name, code, description, deleted) VALUES (2, '用户', 'USER', '普通用户', 0);
 
 INSERT INTO sys_permission (id, name, code, url, method) VALUES (1, '登录', 'auth:login', '/api/v1/auth/login', 'POST');
 INSERT INTO sys_permission (id, name, code, url, method) VALUES (2, '获取用户信息', 'auth:me', '/api/v1/auth/me', 'GET');

@@ -168,13 +168,22 @@ CREATE TABLE IF NOT EXISTS label_schema (
 CREATE TABLE IF NOT EXISTS annotation_task (
     id BIGINT AUTO_INCREMENT PRIMARY KEY,
     name VARCHAR(200),
+    description VARCHAR(1000),
     dataset_id BIGINT NOT NULL,
     label_schema_id BIGINT,
     status VARCHAR(20) DEFAULT 'PENDING',
     total_rows INT DEFAULT 0,
     completed_rows INT DEFAULT 0,
+    assigned_annotators INT,
     created_by BIGINT,
     quality_score DOUBLE,
+    quality_report_json CLOB,
+    review_count INT DEFAULT 0,
+    arbitration_count INT DEFAULT 0,
+    pass_rate DOUBLE,
+    consistency_rate DOUBLE,
+    publish_version VARCHAR(50),
+    published_at TIMESTAMP,
     tenant_id BIGINT DEFAULT 1,
     deleted INT DEFAULT 0,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
@@ -187,12 +196,22 @@ CREATE TABLE IF NOT EXISTS annotation_item (
     dataset_id BIGINT,
     row_index INT,
     label_code VARCHAR(100),
+    label_name VARCHAR(200),
+    comment VARCHAR(1000),
     status VARCHAR(20) DEFAULT 'PENDING',
     annotated_by BIGINT,
+    reviewed_by BIGINT,
+    review_comment VARCHAR(1000),
+    annotated_at TIMESTAMP,
+    reviewed_at TIMESTAMP,
     annotation_type VARCHAR(50),
     confidence DECIMAL(5,4),
     model_source VARCHAR(100),
     rule_version VARCHAR(50),
+    is_corrected BOOLEAN DEFAULT FALSE,
+    original_confidence DECIMAL(5,4),
+    original_label_code VARCHAR(100),
+    corrected_at TIMESTAMP,
     original_label VARCHAR(200),
     label_source VARCHAR(100),
     model_version VARCHAR(50),
@@ -229,6 +248,8 @@ CREATE TABLE IF NOT EXISTS prediction_task (
     target_field VARCHAR(200),
     time_field VARCHAR(200),
     model_type VARCHAR(50),
+    task_type VARCHAR(20) DEFAULT 'REGRESSION',
+    dl_model_id VARCHAR(100),
     status VARCHAR(20) DEFAULT 'PENDING',
     error_message TEXT,
     parameters_json TEXT,
@@ -479,7 +500,11 @@ CREATE TABLE IF NOT EXISTS security_policy (
     policy_type VARCHAR(50) NOT NULL,
     classification VARCHAR(30) DEFAULT 'INTERNAL',
     rules_json TEXT,
+    rules TEXT,
+    description VARCHAR(500),
+    priority INT DEFAULT 0,
     enabled BOOLEAN DEFAULT TRUE,
+    is_enabled BOOLEAN DEFAULT TRUE,
     created_by BIGINT,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
@@ -530,10 +555,10 @@ CREATE TABLE IF NOT EXISTS security_event (
 );
 
 -- 初始数据（使用较大的ID避免与AUTO_INCREMENT冲突）
-INSERT INTO sys_role (id, name, code, description) 
-SELECT 1000, '管理员', 'ADMIN', '系统管理员' FROM DUAL WHERE NOT EXISTS (SELECT 1 FROM sys_role WHERE code = 'ADMIN');
-INSERT INTO sys_role (id, name, code, description) 
-SELECT 1001, '用户', 'USER', '普通用户' FROM DUAL WHERE NOT EXISTS (SELECT 1 FROM sys_role WHERE code = 'USER');
+INSERT INTO sys_role (id, name, code, description, deleted) 
+SELECT 1000, '管理员', 'ADMIN', '系统管理员', 0 FROM DUAL WHERE NOT EXISTS (SELECT 1 FROM sys_role WHERE code = 'ADMIN');
+INSERT INTO sys_role (id, name, code, description, deleted) 
+SELECT 1001, '用户', 'USER', '普通用户', 0 FROM DUAL WHERE NOT EXISTS (SELECT 1 FROM sys_role WHERE code = 'USER');
 
 INSERT INTO sys_user (id, username, password, email, real_name, status, tenant_id, created_at, updated_at, deleted) 
 SELECT 1000, 'admin', '$2a$10$LOZraF.f/CoSds33d8VV7OcQj2cNEzKs/jcrOrtlC34Yzd6mGrCxu', 'admin@river-agi.com', '系统管理员', 1, 1, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, 0 
@@ -738,12 +763,23 @@ CREATE TABLE IF NOT EXISTS collection_task (
     id BIGINT AUTO_INCREMENT PRIMARY KEY,
     name VARCHAR(200) NOT NULL,
     source_type VARCHAR(50),
+    media_type VARCHAR(50),
+    source_uri VARCHAR(500),
     source_config_json CLOB,
+    dataset_id BIGINT,
+    label_schema_id BIGINT,
+    cleaning_config_json CLOB,
+    cleaning_summary_json CLOB,
+    annotation_rule_json CLOB,
+    collaboration_mode VARCHAR(20) DEFAULT 'SINGLE',
+    assigned_annotators VARCHAR(500),
     status VARCHAR(20) DEFAULT 'PENDING',
     schedule_config_json CLOB,
     last_run_at TIMESTAMP,
     next_run_at TIMESTAMP,
     error_message VARCHAR(1000),
+    total_items INT DEFAULT 0,
+    completed_items INT DEFAULT 0,
     tenant_id BIGINT DEFAULT 1,
     deleted INT DEFAULT 0,
     created_by BIGINT,
@@ -764,6 +800,12 @@ CREATE TABLE IF NOT EXISTS annotation_task_assignee (
 CREATE TABLE IF NOT EXISTS annotation_history (
     id BIGINT AUTO_INCREMENT PRIMARY KEY,
     item_id BIGINT NOT NULL,
+    action VARCHAR(50),
+    operator_id BIGINT,
+    operator_name VARCHAR(100),
+    old_value CLOB,
+    new_value CLOB,
+    reason VARCHAR(500),
     annotator_id BIGINT,
     old_label VARCHAR(500),
     new_label VARCHAR(500),
@@ -775,12 +817,23 @@ CREATE TABLE IF NOT EXISTS annotation_history (
 CREATE TABLE IF NOT EXISTS prediction_algorithm_config (
     id BIGINT AUTO_INCREMENT PRIMARY KEY,
     algorithm_type VARCHAR(50) NOT NULL,
-    config_json CLOB,
-    enabled BOOLEAN DEFAULT TRUE,
-    tenant_id BIGINT DEFAULT 1,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    algorithm_name VARCHAR(100) NOT NULL,
+    algorithm_family VARCHAR(30) NOT NULL,
+    task_type VARCHAR(20) NOT NULL,
+    default_params CLOB,
+    is_default BOOLEAN DEFAULT FALSE,
+    is_enabled BOOLEAN DEFAULT TRUE,
+    priority INT DEFAULT 0,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
+
+INSERT INTO prediction_algorithm_config (algorithm_type, algorithm_name, algorithm_family, task_type, default_params, is_default, is_enabled, priority) VALUES
+('LOGISTIC_REGRESSION_CLASSIFIER', '逻辑回归分类', 'CLASSIFICATION', 'CLASSIFICATION', '{"learning_rate":0.01,"max_iterations":1000,"regularization":0.001}', TRUE, TRUE, 1),
+('DECISION_TREE_CLASSIFIER', '决策树分类', 'CLASSIFICATION', 'CLASSIFICATION', '{"max_depth":10,"min_samples_split":2,"min_samples_leaf":1}', TRUE, TRUE, 2),
+('RANDOM_FOREST_CLASSIFIER', '随机森林分类', 'CLASSIFICATION', 'CLASSIFICATION', '{"num_trees":100,"max_depth":10,"min_samples_split":2}', TRUE, TRUE, 3),
+('LSTM_DL', 'LSTM深度预测', 'DEEP_LEARNING', 'SEQUENCE', '{"hidden_size":64,"num_layers":2,"epochs":100,"batch_size":32,"learning_rate":0.001}', FALSE, TRUE, 4),
+('TRANSFORMER_DL', 'Transformer深度预测', 'DEEP_LEARNING', 'SEQUENCE', '{"d_model":128,"num_heads":4,"num_layers":2,"epochs":100,"batch_size":32}', FALSE, TRUE, 5),
+('MLP_DL', 'MLP深度预测', 'DEEP_LEARNING', 'REGRESSION', '{"hidden_layers":[128,64,32],"epochs":100,"batch_size":32,"learning_rate":0.001}', FALSE, TRUE, 6);
 
 -- 合同 14.2.1 隐私政策知情同意记录
 CREATE TABLE IF NOT EXISTS privacy_consent (

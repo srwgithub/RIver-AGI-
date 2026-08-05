@@ -11,6 +11,7 @@ import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import lombok.RequiredArgsConstructor;
 import org.springframework.security.core.Authentication;
+import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
 
@@ -27,8 +28,8 @@ public class DatasetController {
     @PostMapping("/upload")
     @Operation(summary = "Upload file", description = "Upload Excel/CSV/JSON file to create a dataset")
     public ApiResponse<Dataset> uploadFile(
-            @Parameter(description = "File to upload") @RequestParam("file") MultipartFile file,
-            Authentication authentication) {
+            @Parameter(description = "File to upload") @RequestParam("file") MultipartFile file) {
+        Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
         return ApiResponse.ok(datasetService.uploadFile(file, authentication));
     }
     

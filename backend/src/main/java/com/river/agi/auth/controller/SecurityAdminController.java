@@ -22,7 +22,7 @@ import org.springframework.transaction.annotation.Transactional;
 @RestController
 @RequestMapping("/api/v1/security-admin")
 @RequiredArgsConstructor
-@PreAuthorize("hasRole('ADMIN')")
+@PreAuthorize("hasAuthority('ROLE_ADMIN')")
 public class SecurityAdminController {
     private final RoleMapper roleMapper;
     private final PermissionMapper permissionMapper;

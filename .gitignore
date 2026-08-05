@@ -52,6 +52,9 @@ htmlcov/
 venv/
 env/
 backend/prediction-engine/saved_models/
+backend/prediction-engine/.venv.broken-*/
+backend/prediction-engine/checkpoints/
+backend/prediction-engine/model-cache/
 
 # Generated backend static bundle; rebuild from frontend when needed
 backend/src/main/resources/static/
@@ -76,3 +79,17 @@ test-results/
 *.zip
 *.tar
 *.tar.gz
+
+# Local database repair and export scratch files
+/complete_schema_for_mysql.sql
+/fix_mysql_schema.sql
+/init_database.sql
+*.dump
+*.sql.bak
+
+# Local acceptance artifacts and generated reports
+reports/
+artifacts/
+*.html
+*.pdf
+*.docx

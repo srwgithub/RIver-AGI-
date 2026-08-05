@@ -54,10 +54,19 @@ public class AnomalyDetectionService {
                         .orderByAsc(PredictionResult::getPredictionDate)
         );
 
+        // A forecast normally starts after the last historical date. In that
+        // state there is no realized value to compare, so an empty result is a
+        // valid business outcome rather than an error or a fabricated alert.
+        boolean hasComparableValue = predictions.stream().anyMatch(pr -> {
+            LocalDate date = parseDate(pr.getPredictionDate());
+            return date != null && (pr.getActualValue() != null || actualMap.containsKey(date));
+        });
+        if (!hasComparableValue) return Collections.emptyList();
+
         List<AnomalyAlert> alerts = new ArrayList<>();
         for (PredictionResult pr : predictions) {
             LocalDate predDate = parseDate(pr.getPredictionDate());
-            if (predDate == null) continue;
+            if (predDate == null || pr.getPredictedValue() == null) continue;
             // Prediction results may receive the realized value after the forecast
             // was created. Prefer that persisted value, then fall back to the
             // historical dataset for backfilled historical predictions.

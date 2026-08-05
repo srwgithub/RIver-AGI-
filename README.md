@@ -4,6 +4,26 @@ RIver AGI 是面向企业数据采集、标注、质量管理、需求预测、�
 
 本文档是本地开发、测试和交付部署的完整说明，覆盖环境准备、依赖安装、配置、启动、使用、验收和故障排查。
 
+## Git 提交范围
+
+项目根目录的 `.gitignore` 统一排除本机密钥和配置、Python 虚拟环境、Node/Maven 依赖与构建产物、缓存、日志、运行数据、模型文件、测试报告和临时数据库修复文件。正式提交应保留前后端源码、数据库初始化与 Flyway 迁移脚本、配置模板、测试脚本、测试数据和 `docs/` 文档；`backend/.env.local`、`target/`、`frontend/node_modules/`、`frontend/dist/`、`backend/prediction-engine/.venv/` 不应提交。
+
+提交前检查：
+
+```bash
+git status --short
+git check-ignore -v backend/.env.local backend/target frontend/node_modules backend/prediction-engine/.venv
+git ls-files | rg '(^|/)(\.env|\.env\.local|target|node_modules|\.venv|__pycache__)/|\.(pyc|class|jar|log)$'
+```
+
+如果某个本地文件此前已经被 Git 跟踪，仅修改 `.gitignore` 不会自动移除它，需要先执行：
+
+```bash
+git rm --cached -- path/to/local-file
+```
+
+该命令只移除 Git 索引，不删除本机文件。提交前不要使用 `git add .`，应按交付清单添加源码、脚本、测试和文档。
+
 ## 1. 系统组成
 
 平台由三个运行服务组成：

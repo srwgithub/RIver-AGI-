@@ -127,6 +127,8 @@ def chain1_annotation(add, admin_id):
     s.method, s.url = "POST", "/api/v1/datasets/upload"
     t0 = time.perf_counter()
     dataset_id = None
+    label_schema_id = None
+    label_options = []
     try:
         with open(SAMPLE_CSV, "rb") as f:
             r = call("POST", BASE + "/api/v1/datasets/upload", token=token,
@@ -140,6 +142,32 @@ def chain1_annotation(add, admin_id):
                         "rowCount": data.get("rowCount") if isinstance(data, dict) else None,
                         "status": data.get("status") if isinstance(data, dict) else None}
         s.done(dataset_id is not None, "ok" if dataset_id else f"未返回 datasetId: {msg}")
+    except Exception as e:
+        s.elapsed_ms = (time.perf_counter() - t0) * 1000
+        s.done(False, f"异常 {type(e).__name__}: {e}")
+    steps.append(s); s.report(add)
+
+    # Resolve a real schema and child label before creating the task. This
+    # mirrors the frontend flow and prevents submitting a dataset column name.
+    s = Step("读取可用标签体系")
+    s.method, s.url = "GET", "/api/v1/label-schemas?page=1&size=100"
+    t0 = time.perf_counter()
+    try:
+        r = call("GET", BASE + "/api/v1/label-schemas?page=1&size=100", token=token)
+        s.status = r.status_code
+        s.elapsed_ms = (time.perf_counter() - t0) * 1000
+        data, msg = extract_data(r)
+        schemas = data.get("records", []) if isinstance(data, dict) else []
+        for schema in schemas:
+            child_resp = call("GET", BASE + f"/api/v1/label-schemas/{schema.get('id')}/children", token=token)
+            child_data, _ = extract_data(child_resp)
+            if isinstance(child_data, list) and child_data:
+                label_schema_id = schema.get("id")
+                label_options = child_data
+                break
+        s.key_fields = {"labelSchemaId": label_schema_id, "labelCount": len(label_options)}
+        s.done(r.status_code == 200 and label_schema_id is not None,
+               "ok" if label_schema_id else f"没有找到带子标签的标签体系: {msg}")
     except Exception as e:
         s.elapsed_ms = (time.perf_counter() - t0) * 1000
         s.done(False, f"异常 {type(e).__name__}: {e}")
@@ -177,7 +205,8 @@ def chain1_annotation(add, admin_id):
     try:
         body = {"name": "E2E标注任务-%d" % int(time.time()),
                 "description": "E2E全链路验收自动创建",
-                "datasetId": dataset_id}
+                "datasetId": dataset_id,
+                "labelSchemaId": label_schema_id}
         r = call("POST", BASE + "/api/v1/annotation-tasks", token=token, json=body)
         s.status = r.status_code
         s.elapsed_ms = (time.perf_counter() - t0) * 1000
@@ -243,8 +272,10 @@ def chain1_annotation(add, admin_id):
             raise RuntimeError("无标注项可提交（预标注未生成标注项）")
         ann = annotations[0]
         ann_id = ann.get("id")
-        label_code = ann.get("labelCode") or "POS"
-        body = {"labelCode": label_code, "labelName": ann.get("labelName") or "正向", "comment": "E2E自动提交"}
+        label = label_options[0] if label_options else {}
+        label_code = label.get("code") or ann.get("labelCode")
+        label_name = label.get("name") or ann.get("labelName") or label_code
+        body = {"labelCode": label_code, "labelName": label_name, "comment": "E2E自动提交"}
         r = call("POST", BASE + f"/api/v1/annotations/{ann_id}/submit", token=token, json=body)
         s.status = r.status_code
         s.elapsed_ms = (time.perf_counter() - t0) * 1000
@@ -476,6 +507,17 @@ def chain2_prediction(add):
         rl = call("GET", BASE + "/api/v1/predictions/models", token=token)
         ldata, lmsg = extract_data(rl)
         versions = ldata if isinstance(ldata, list) else []
+        # A fresh environment may contain only the champion model. Generate
+        # candidate versions through the real auto-tune endpoint first.
+        if len([v for v in versions if v.get("id")]) < 2 and prediction_id:
+            tune = call("POST", BASE + f"/api/v1/predictions/{prediction_id}/auto-tune",
+                        token=token, timeout=120)
+            if tune.status_code >= 400:
+                _, tune_msg = extract_data(tune)
+                s.reason = f"自动调优未生成候选模型({tune.status_code}): {tune_msg}"
+            rl = call("GET", BASE + "/api/v1/predictions/models", token=token)
+            ldata, lmsg = extract_data(rl)
+            versions = ldata if isinstance(ldata, list) else []
         cand = [v.get("id") for v in versions if v.get("id")][:2]
         # 若新预测产生了 modelVersionId，优先用它 + 一个旧版本
         ids = []

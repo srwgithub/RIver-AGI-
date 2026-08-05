@@ -231,12 +231,16 @@ public class DecisionSupportService {
         double totalDelta = 0;
         for (PredictionResult pr : basePredictions) {
             double adjusted = pr.getPredictedValue() * factor;
-            points.add(Map.of(
-                    "date", pr.getPredictionDate(),
-                    "value", Math.round(adjusted * 100.0) / 100.0,
-                    "lowerBound", pr.getLowerBound() != null ? Math.round(pr.getLowerBound() * factor * 100.0) / 100.0 : null,
-                    "upperBound", pr.getUpperBound() != null ? Math.round(pr.getUpperBound() * factor * 100.0) / 100.0 : null
-            ));
+            // Map.of rejects null values. Prediction intervals are optional for
+            // some model types, so build this response with a null-tolerant map.
+            Map<String, Object> point = new LinkedHashMap<>();
+            point.put("date", pr.getPredictionDate());
+            point.put("value", Math.round(adjusted * 100.0) / 100.0);
+            point.put("lowerBound", pr.getLowerBound() != null
+                    ? Math.round(pr.getLowerBound() * factor * 100.0) / 100.0 : null);
+            point.put("upperBound", pr.getUpperBound() != null
+                    ? Math.round(pr.getUpperBound() * factor * 100.0) / 100.0 : null);
+            points.add(point);
             totalDelta += (adjusted - pr.getPredictedValue());
         }
         double totalBase = basePredictions.stream().mapToDouble(PredictionResult::getPredictedValue).sum();

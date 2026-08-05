@@ -5,21 +5,19 @@ import com.river.agi.common.BusinessException;
 import io.minio.MinioClient;
 import io.minio.PutObjectArgs;
 import io.minio.RemoveObjectArgs;
-import io.minio.errors.MinioException;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.stereotype.Service;
 import org.springframework.web.multipart.MultipartFile;
 
-import java.io.IOException;
 import java.io.InputStream;
-import java.security.InvalidKeyException;
-import java.security.NoSuchAlgorithmException;
 import java.util.UUID;
 
 @Slf4j
 @Service
 @RequiredArgsConstructor
+@ConditionalOnProperty(name = "minio.enabled", havingValue = "true")
 public class MinioService {
     
     private final MinioClient minioClient;
@@ -34,16 +32,18 @@ public class MinioService {
         String newFilename = UUID.randomUUID().toString() + extension;
         
         try (InputStream inputStream = file.getInputStream()) {
+            Long fileSize = file.getSize();
+            Long partSize = -1L; // Use -1 to let MinIO determine the part size for streaming
             minioClient.putObject(
                     PutObjectArgs.builder()
                             .bucket(minioConfig.getBucketName())
                             .object(newFilename)
-                            .stream(inputStream, file.getSize(), -1)
+                            .stream(inputStream, fileSize, partSize)
                             .contentType(file.getContentType())
                             .build()
             );
             return minioConfig.getEndpoint() + "/" + minioConfig.getBucketName() + "/" + newFilename;
-        } catch (MinioException | IOException | InvalidKeyException | NoSuchAlgorithmException e) {
+        } catch (Exception e) {
             log.error("Failed to upload file to MinIO", e);
             throw new BusinessException("Failed to upload file");
         }
@@ -57,7 +57,7 @@ public class MinioService {
                             .object(fileName)
                             .build()
             );
-        } catch (MinioException | IOException | InvalidKeyException | NoSuchAlgorithmException e) {
+        } catch (Exception e) {
             log.error("Failed to delete file from MinIO", e);
             throw new BusinessException("Failed to delete file");
         }

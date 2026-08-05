@@ -105,7 +105,7 @@ async function save() {
   catch (error) { ElMessage.error(error.message || '配置保存失败，未写入后台') }
   finally { saving.value = false }
 }
-onMounted(async () => { try { const saved = await request.get('/v1/system-config/prediction-evaluation'); if (saved?.configJson) Object.assign(form, JSON.parse(saved.configJson)) } catch (error) {} })
+onMounted(async () => { try { const saved = await request.get('/v1/system-config/prediction-evaluation'); if (saved?.configJson) Object.assign(form, JSON.parse(saved.configJson)) } catch (error) { ElMessage.warning(error.message || '评估配置加载失败，使用默认配置') } })
 </script>
 
 <style scoped>

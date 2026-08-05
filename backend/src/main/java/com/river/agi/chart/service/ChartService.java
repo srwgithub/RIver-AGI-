@@ -558,7 +558,11 @@ public class ChartService {
         Page<Report> pageResult;
         
         if (datasetId != null) {
-            pageResult = reportMapper.selectByDatasetId(pageRequest, datasetId);
+            pageResult = reportMapper.selectPage(pageRequest,
+                    new LambdaQueryWrapper<Report>()
+                            .eq(Report::getDatasetId, datasetId)
+                            .eq(Report::getDeleted, 0)
+                            .orderByDesc(Report::getCreatedAt));
         } else {
             pageResult = reportMapper.selectPage(pageRequest, 
                     new LambdaQueryWrapper<Report>().orderByDesc(Report::getCreatedAt));
