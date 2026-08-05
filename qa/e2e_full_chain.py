@@ -26,6 +26,7 @@ os.makedirs(OUT_DIR, exist_ok=True)
 
 ADMIN = {"username": "admin", "password": "admin123"}
 TIMEOUT = 60
+PREDICTION_WAIT_SECONDS = 45
 
 
 def ts():
@@ -85,6 +86,23 @@ def extract_data(resp):
     if isinstance(body, dict) and "data" in body:
         return body.get("data"), body.get("message", "")
     return body, ""
+
+
+def wait_for_prediction(token, prediction_id):
+    """Wait for the async Java task before reading results or metrics."""
+    deadline = time.time() + PREDICTION_WAIT_SECONDS
+    last_task = None
+    last_status_code = 0
+    while time.time() < deadline:
+        resp = call("GET", BASE + f"/api/v1/predictions/{prediction_id}", token=token)
+        last_status_code = resp.status_code
+        data, _ = extract_data(resp)
+        last_task = data if isinstance(data, dict) else last_task
+        status = str((last_task or {}).get("status", "")).upper()
+        if status in {"COMPLETED", "FAILED", "ERROR"}:
+            return last_task, last_status_code
+        time.sleep(1)
+    return last_task, last_status_code
 
 
 def login(add):
@@ -438,6 +456,26 @@ def chain2_prediction(add):
         s.done(False, f"异常 {type(e).__name__}: {e}")
     steps.append(s); s.report(add)
 
+    # The create endpoint schedules execution asynchronously. Do not let a
+    # transient RUNNING response make the following business checks pass.
+    s = Step("等待预测任务完成")
+    s.method, s.url = "GET", f"/api/v1/predictions/{prediction_id}"
+    t0 = time.perf_counter()
+    try:
+        if not prediction_id:
+            raise RuntimeError("依赖的预测任务ID缺失")
+        task_data, task_status_code = wait_for_prediction(token, prediction_id)
+        s.status = task_status_code
+        s.elapsed_ms = (time.perf_counter() - t0) * 1000
+        status = str((task_data or {}).get("status", "")).upper()
+        s.key_fields = {"predictionId": prediction_id, "status": status}
+        s.done(s.status == 200 and status == "COMPLETED",
+               "ok" if s.status == 200 and status == "COMPLETED" else f"任务未完成: {status}")
+    except Exception as e:
+        s.elapsed_ms = (time.perf_counter() - t0) * 1000
+        s.done(False, f"异常 {type(e).__name__}: {e}")
+    steps.append(s); s.report(add)
+
     # 4. 获取预测结果
     s = Step("获取预测结果")
     s.method, s.url = "GET", f"/api/v1/predictions/{prediction_id}/results"
@@ -452,7 +490,9 @@ def chain2_prediction(add):
         s.data = data
         result_count = len(data) if isinstance(data, list) else 0
         s.key_fields = {"resultCount": result_count}
-        s.done(r.status_code == 200, "ok" if r.status_code == 200 else f"获取失败({r.status_code}): {msg}")
+        s.done(r.status_code == 200 and result_count > 0,
+               "ok" if r.status_code == 200 and result_count > 0
+               else f"结果为空或获取失败({r.status_code}): {msg}")
     except Exception as e:
         s.elapsed_ms = (time.perf_counter() - t0) * 1000
         s.done(False, f"异常 {type(e).__name__}: {e}")
@@ -473,7 +513,11 @@ def chain2_prediction(add):
         s.key_fields = {"hasMetrics": isinstance(data, dict) and len(data) > 0,
                         "mae": data.get("mae") if isinstance(data, dict) else None,
                         "rmse": data.get("rmse") if isinstance(data, dict) else None}
-        s.done(r.status_code == 200, "ok" if r.status_code == 200 else f"评估失败({r.status_code}): {msg}")
+        metric_values = [data.get("mae"), data.get("rmse"), data.get("mape")] if isinstance(data, dict) else []
+        has_numeric_metrics = all(isinstance(value, (int, float)) for value in metric_values)
+        s.done(r.status_code == 200 and has_numeric_metrics,
+               "ok" if r.status_code == 200 and has_numeric_metrics
+               else f"评估指标为空或失败({r.status_code}): {msg}")
     except Exception as e:
         s.elapsed_ms = (time.perf_counter() - t0) * 1000
         s.done(False, f"异常 {type(e).__name__}: {e}")
