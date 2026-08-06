@@ -161,6 +161,7 @@ public class AnnotationController {
                 request.get("labelCode"),
                 request.get("labelName"),
                 request.get("comment"),
+                request.get("fieldAnnotations"),
                 authentication
         ));
     }

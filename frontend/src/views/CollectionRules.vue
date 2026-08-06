@@ -105,7 +105,7 @@ const load = async () => {
 const save = async () => {
   if (scoringTotal.value !== 100) return ElMessage.warning('质量评分权重合计必须为 100%')
   saving.value = true
-  try { await request.put('/v1/system-config/collection-annotation', JSON.stringify(form), { headers: { 'Content-Type': 'application/json' } }); localStorage.setItem('river-collection-rules', JSON.stringify(form)); ElMessage.success('全部配置已保存') }
+  try { await request.put('/v1/system-config/collection-annotation', JSON.stringify(form), { headers: { 'Content-Type': 'application/json' } }); ElMessage.success('全部配置已保存') }
   catch (e) { ElMessage.error(e.message || '配置保存失败') }
   finally { saving.value = false }
 }

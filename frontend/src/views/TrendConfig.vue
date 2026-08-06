@@ -123,7 +123,6 @@ const save = async () => {
   saving.value = true
   try {
     await request.put('/v1/system-config/trend-dashboard', JSON.stringify(form), { headers: { 'Content-Type': 'application/json' } })
-    localStorage.setItem('river-trend-config', JSON.stringify(form))
     ElMessage.success('趋势看板配置已保存')
   } catch (error) {
     ElMessage.error(error.message || '趋势看板配置保存失败，未写入后台')
@@ -137,8 +136,7 @@ onMounted(async () => {
     const saved = await request.get('/v1/system-config/trend-dashboard')
     if (saved?.configJson) Object.assign(form, JSON.parse(saved.configJson))
   } catch (error) {
-    const local = localStorage.getItem('river-trend-config')
-    if (local) Object.assign(form, JSON.parse(local))
+    ElMessage.warning(error.message || '趋势配置读取失败，当前显示未保存的表单默认值')
   }
 })
 </script>

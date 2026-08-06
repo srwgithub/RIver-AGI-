@@ -89,8 +89,7 @@ const defaults = {
   retention: { versionCount: 20, logDays: 365, reportDays: 730, autoCompare: true, auditSync: true }
 }
 const clone = value => JSON.parse(JSON.stringify(value))
-const stored = JSON.parse(localStorage.getItem('river-evaluation-config') || 'null')
-const form = reactive(Object.assign(clone(defaults), stored || {}))
+const form = reactive(clone(defaults))
 const weightFields = [{ key: 'accuracy', label: '综合准确率' }, { key: 'precision', label: '精准率' }, { key: 'recall', label: '召回率' }, { key: 'mae', label: 'MAE' }, { key: 'mse', label: 'MSE' }, { key: 'mape', label: 'MAPE' }]
 const attributionFields = [{ key: 'sample', label: '数据样本问题' }, { key: 'label', label: '标注质量问题' }, { key: 'fitting', label: '模型拟合问题' }, { key: 'market', label: '市场波动问题' }]
 const weightTotal = computed(() => Object.values(form.accuracy.weights).reduce((total, value) => total + Number(value || 0), 0))
@@ -100,8 +99,7 @@ async function restore() { try { await ElMessageBox.confirm('确认将全部策�
 async function save() {
   if (weightTotal.value !== 100) return ElMessage.warning('评估指标权重合计必须为 100%')
   saving.value = true
-  localStorage.setItem('river-evaluation-config', JSON.stringify(form))
-  try { await request.put('/v1/system-config/prediction-evaluation', JSON.stringify(form), { headers: { 'Content-Type': 'application/json' } }); ElMessage.success('配置已保存并同步至系统') }
+  try { await request.put('/v1/system-config/prediction-evaluation', JSON.stringify(form), { headers: { 'Content-Type': 'application/json' } }); localStorage.removeItem('river-evaluation-config'); ElMessage.success('配置已保存并同步至系统') }
   catch (error) { ElMessage.error(error.message || '配置保存失败，未写入后台') }
   finally { saving.value = false }
 }

@@ -3,6 +3,7 @@ package com.river.agi.annotation.service;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.JsonNode;
 import com.river.agi.annotation.entity.Annotation;
 import com.river.agi.annotation.entity.AnnotationHistory;
 import com.river.agi.annotation.entity.AnnotationTask;
@@ -99,9 +100,12 @@ public class AnnotationService {
                 .eq(Annotation::getTaskId, taskId).orderByAsc(Annotation::getRowIndex));
         Map<Integer, Annotation> byRow = annotations.stream().collect(Collectors.toMap(
                 a -> a.getRowIndex() == null ? 0 : a.getRowIndex().intValue(), a -> a, (first, ignored) -> first));
-        List<String> headers = new ArrayList<>(rows.isEmpty() ? List.of() : rows.get(0).keySet());
+        List<String> sourceHeaders = new ArrayList<>(rows.isEmpty() ? List.of() : rows.get(0).keySet());
+        List<String> headers = new ArrayList<>(sourceHeaders);
+        // Export a readable column beside each source field; keep the JSON column for traceability.
+        sourceHeaders.forEach(header -> headers.add(header + "_annotation"));
         headers.add("annotation_label_code"); headers.add("annotation_label_name");
-        headers.add("annotation_status"); headers.add("annotation_comment");
+        headers.add("annotation_status"); headers.add("annotation_comment"); headers.add("field_annotations_json");
         ByteArrayOutputStream bytes = new ByteArrayOutputStream();
         try (CSVWriter writer = new CSVWriter(new OutputStreamWriter(bytes, StandardCharsets.UTF_8))) {
             writer.writeNext(headers.toArray(String[]::new));
@@ -109,11 +113,14 @@ public class AnnotationService {
                 Map<String, String> row = rows.get(i);
                 Annotation annotation = byRow.get(i);
                 List<String> values = new ArrayList<>(headers.size());
-                for (String header : headers.subList(0, headers.size() - 4)) values.add(Optional.ofNullable(row.get(header)).orElse(""));
+                for (String header : sourceHeaders) values.add(Optional.ofNullable(row.get(header)).orElse(""));
+                Map<String, String> fieldLabels = parseFieldAnnotationLabels(annotation);
+                for (String header : sourceHeaders) values.add(Optional.ofNullable(fieldLabels.get(header)).orElse(""));
                 values.add(annotation == null ? "" : Optional.ofNullable(annotation.getLabelCode()).orElse(""));
                 values.add(annotation == null ? "" : Optional.ofNullable(annotation.getLabelName()).orElse(""));
                 values.add(annotation == null ? "PENDING" : Optional.ofNullable(annotation.getStatus()).orElse("PENDING"));
                 values.add(annotation == null ? "" : Optional.ofNullable(annotation.getComment()).orElse(""));
+                values.add(annotation == null ? "" : Optional.ofNullable(annotation.getFieldAnnotationsJson()).orElse(""));
                 writer.writeNext(values.toArray(String[]::new));
             }
         } catch (Exception e) {
@@ -124,6 +131,24 @@ public class AnnotationService {
         result.put("taskId", taskId); result.put("outputRows", rows.size());
         result.put("annotatedRows", annotations.size()); result.put("fileUrl", localStorageService.fileUrl(filename));
         return result;
+    }
+
+    private Map<String, String> parseFieldAnnotationLabels(Annotation annotation) {
+        if (annotation == null || annotation.getFieldAnnotationsJson() == null
+                || annotation.getFieldAnnotationsJson().isBlank()) return Map.of();
+        try {
+            JsonNode root = objectMapper.readTree(annotation.getFieldAnnotationsJson());
+            Map<String, String> result = new LinkedHashMap<>();
+            root.fields().forEachRemaining(entry -> {
+                JsonNode value = entry.getValue();
+                String code = value.isTextual() ? value.asText() : value.path("labelCode").asText("");
+                String name = value.isObject() ? value.path("labelName").asText(code) : code;
+                result.put(entry.getKey(), name.isBlank() ? code : name);
+            });
+            return result;
+        } catch (Exception ignored) {
+            return Map.of();
+        }
     }
 
     // Keep the legacy unit-test constructor compatible while Spring uses the full constructor.
@@ -469,11 +494,17 @@ public class AnnotationService {
     }
     
     // Annotation submission
-    
+
+    public Annotation submitAnnotation(Long annotationId, String labelCode, String labelName,
+                                        String comment, Authentication authentication) {
+        return submitAnnotation(annotationId, labelCode, labelName, comment, null, authentication);
+    }
+
     @AuditOperation(action = "SUBMIT_ANNOTATION", resourceType = "ANNOTATION", description = "Submit annotation")
     @Transactional
-    public Annotation submitAnnotation(Long annotationId, String labelCode, String labelName, 
-                                        String comment, Authentication authentication) {
+    public Annotation submitAnnotation(Long annotationId, String labelCode, String labelName,
+                                        String comment, String fieldAnnotationsJson,
+                                        Authentication authentication) {
         Annotation annotation = annotationMapper.selectById(annotationId);
         if (annotation == null) {
             throw new BusinessException("Annotation not found");
@@ -508,6 +539,31 @@ public class AnnotationService {
         annotation.setLabelCode(labelCode);
         annotation.setLabelName(labelName);
         annotation.setComment(comment);
+        if (fieldAnnotationsJson != null && !fieldAnnotationsJson.isBlank()) {
+            try {
+                JsonNode fields = objectMapper.readTree(fieldAnnotationsJson);
+                if (!fields.isObject()) throw new BusinessException("字段标注必须是对象格式");
+                var iterator = fields.fields();
+                while (iterator.hasNext()) {
+                    var entry = iterator.next();
+                    JsonNode value = entry.getValue();
+                    String fieldLabelCode = value.isTextual() ? value.asText() : value.path("labelCode").asText(null);
+                    if (fieldLabelCode == null || fieldLabelCode.isBlank()) {
+                        throw new BusinessException("字段“" + entry.getKey() + "”未选择标签");
+                    }
+                    long fieldLabelCount = labelSchemaMapper.selectCount(new LambdaQueryWrapper<LabelSchema>()
+                            .eq(LabelSchema::getParentId, task.getLabelSchemaId())
+                            .eq(LabelSchema::getCode, fieldLabelCode)
+                            .eq(LabelSchema::getDeleted, 0));
+                    if (fieldLabelCount == 0) throw new BusinessException("字段标注包含不属于当前标签体系的标签");
+                }
+                annotation.setFieldAnnotationsJson(objectMapper.writeValueAsString(fields));
+            } catch (BusinessException e) {
+                throw e;
+            } catch (Exception e) {
+                throw new BusinessException("字段标注格式无效");
+            }
+        }
         annotation.setStatus(Annotation.Status.SUBMITTED.name());
         annotation.setAnnotatedBy(userId);
         annotation.setAnnotatedAt(LocalDateTime.now());

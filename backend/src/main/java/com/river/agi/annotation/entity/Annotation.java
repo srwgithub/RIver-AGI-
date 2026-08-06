@@ -20,6 +20,7 @@ public class Annotation {
     private String labelCode;
     private String labelName;
     private String comment;
+    private String fieldAnnotationsJson;
     private String status;
     private Long annotatedBy;
     private Long reviewedBy;
